@@ -16,6 +16,10 @@ def remove_files():
         file_listbox.delete(index)
 
 def process_files():
+    count = 0
+    processed_files = []
+
+    processed_file_listbox.delete(0, tk.END)
     for i in range (file_listbox.size()):
         file_path = file_listbox.get(i)
 
@@ -32,31 +36,54 @@ def process_files():
 
         # Concatenate the df containing semi-tryptic peptides without preceding K/R's, and the df containing semi-tryptic peptides that don't terminate with K/R's
         merged_df = pd.concat([df_prevnoKR, df_endnoKR]).drop_duplicates().reset_index(drop=True)
-        # print(merged_df.columns)
+        
+
+        prev_aa_mask = merged_df['Prev AA'].str.contains('K|R')
+        peptide_end_mask = merged_df['Peptide'].str.endswith('K') | merged_df['Peptide'].str.endswith('R')
+
+        merged_df.loc[prev_aa_mask | peptide_end_mask, 'Tryptic State'] = 'Semi-Tryptic'
+        merged_df.loc[~(prev_aa_mask | peptide_end_mask), 'Tryptic State'] = 'Non-Tryptic'
 
         # Subset columns of interest that are useful to import into Perseus for further analysis
-        merged_df_subset = merged_df[["Spectrum", "Peptide", "Prev AA", "Intensity", "Protein ID", "Entry Name", "Gene", "Mapped Proteins", "Protein Description"]]
+        merged_df_subset = merged_df[["Spectrum", "Peptide", "Prev AA", "Intensity", "Protein ID", "Entry Name", "Gene", "Mapped Proteins", "Protein Description", "Tryptic State"]]
 
         # Adding a column to show whether a peptide is semi-tryptic or fully non-tryptic
         # merged_df_subset['Tryptic State'] = merged_df_subset.apply(lambda row: 'Semi-Tryptic' if row['Prev AA'] == 'K' or row['Prev AA'] == 'R' or row['Peptide'].endswith("K") or row['Peptide'].endswith("R") else 'Non-Tryptic', axis=1)
 
-        merged_df_subset.loc[(merged_df_subset['Prev AA'] == 'K') | (merged_df_subset['Prev AA'] == 'R') | (merged_df_subset['Peptide'].str.endswith("K")) | (merged_df_subset['Peptide'].str.endswith("R")), 'Tryptic State'] = 'Semi-Tryptic'
+        # semi_mask = ((merged_df_subset["Prev AA"] == "K" | merged_df_subset["Prev AA"] == "R" ) | (merged_df_subset["Peptide"].str.endswith("K") | merged_df_subset["Peptide"].str.endswith("R")))
+        # nontryp_mask = ((merged_df_subset["Prev AA"] != "K" | merged_df_subset["Prev AA"] != "R" ) & ~(merged_df_subset["Peptide"].str.endswith("K") | merged_df_subset["Peptide"].str.endswith("R")))
 
-        merged_df_subset.loc[(merged_df_subset['Prev AA'] != 'K') | (merged_df_subset['Prev AA'] == 'R') & (merged_df_subset['Peptide'].str.endswith("K")) | (merged_df_subset['Peptide'].str.endswith("R")), 'Tryptic State'] = 'Non-Tryptic'
+        # merged_df_subset.loc[semi_mask, "Tryptic State"] = "Semi-Tryptic"
+        # merged_df_subset.loc[nontryp_mask, "Tryptic State"] = "Non-Tryptic"
+
 
         # Save the processed DataFrame to an output file
         output_file_path = file_path.replace('.tsv', '_output.tsv')
-        print(output_file_path)
+        # print(output_file_path)
         merged_df_subset.to_csv(output_file_path, sep='\t', index=False)
 
-# blah test
+        processed_files.append(output_file_path)
+        
+    for file in processed_files:
+        processed_file_listbox.insert(0, file)
+        
+
+        count +=1
+    if count == 0:
+        completion_label["text"] = f"Please select a file to process."
+    elif count == 1:
+        completion_label["text"] = f"Successfully processed {count} file."
+    else:
+        completion_label["text"] = f"Successfully processed {count} files."
+
+# def merge_files():
 
 
 ### Customize window and buttons 
 # Initialize window
 window = tk.Tk()
 window.title("Non-Tryptic Peptide Extractor")
-window.geometry("800x400")
+window.geometry("900x700")
 
 # Style configuration
 style = ttk.Style()
@@ -89,6 +116,17 @@ file_listbox = tk.Listbox(window, selectmode=tk.MULTIPLE, width=100, height=10)
 file_listbox.grid(row=1, column=0, columnspan=2, padx=10, sticky=tk.W)
 # file_listbox.pack(in_=top, side=TOP, expand=TRUE)
 
+completion_label = Label(window, text=" ")
+completion_label.grid(row=3, column=0, pady=10, padx=10, sticky=tk.W)
+
+pfl_label = Label(window, text="List of processed files:")
+pfl_label.grid(row=4, column=0, pady=10, padx=10, sticky=tk.W)
+
+processed_file_listbox = tk.Listbox(window, selectmode=tk.MULTIPLE, width=100, height=10)
+processed_file_listbox.grid(row=5, column=0, columnspan=2, padx=10, sticky=tk.W)
+
+merge_button = ttk.Button(window, text="Merge", command=process_files)
+merge_button.grid(row=6, column=1, pady=10, sticky=tk.E)
 
 # process_button.pack(in_=top, side=LEFT)
 
