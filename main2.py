@@ -26,8 +26,14 @@ def process_files():
     processed_filepaths = []
 
     processed_file_listbox.delete(0, tk.END)
-    for i in range (file_listbox.size()):
+    for i in range(file_listbox.size()):
         file_path = file_listbox.get(i)
+        directory_name = os.path.basename(os.path.dirname(file_path))
+        file_name_without_ext = os.path.splitext(os.path.basename(file_path))[0]
+
+        # Save the processed DataFrame to an output file
+        output_file_name = f"{file_name_without_ext}_output_{directory_name}.tsv"
+        processed_filepaths.append(output_file_name)
 
         # Read the TSV file
         df = pd.read_csv(file_path, delimiter='\t', low_memory=False)
@@ -51,8 +57,10 @@ def process_files():
         merged_df.loc[~(prev_aa_mask | peptide_end_mask), 'Tryptic State'] = 'Non-Tryptic'
 
         # Subset columns of interest that are useful to import into Perseus for further analysis
-        merged_df_subset = merged_df[["Spectrum", "Peptide", "Prev AA", "Intensity", "Protein ID", "Entry Name", "Gene", "Mapped Proteins", "Protein Description", "Tryptic State"]]
-
+        # merged_df_subset = merged_df[["Spectrum", "Peptide", "Prev AA", "Intensity", "Protein ID", "Entry Name", "Gene", "Mapped Proteins", "Protein Description", "Tryptic State"]]
+        merged_df["Peptide:Protein"] = merged_df[['Peptide', 'Protein Description']].agg(':'.join, axis=1)
+        merged_df_subset = merged_df[['Peptide:Protein', 'Tryptic State', 'Intensity']]
+        merged_df_subset = merged_df_subset.rename(columns={'Intensity': (f'{sample_name} Intensity')})
 
         # Adding a column to show whether a peptide is semi-tryptic or fully non-tryptic
         # merged_df_subset['Tryptic State'] = merged_df_subset.apply(lambda row: 'Semi-Tryptic' if row['Prev AA'] == 'K' or row['Prev AA'] == 'R' or row['Peptide'].endswith("K") or row['Peptide'].endswith("R") else 'Non-Tryptic', axis=1)
@@ -63,20 +71,12 @@ def process_files():
         # merged_df_subset.loc[semi_mask, "Tryptic State"] = "Semi-Tryptic"
         # merged_df_subset.loc[nontryp_mask, "Tryptic State"] = "Non-Tryptic"
 
-        directory_name = os.path.basename(os.path.dirname(file_path))
-        file_name_without_ext = os.path.splitext(os.path.basename(file_path))[0]
 
-        # Save the processed DataFrame to an output file
-        # output_file_path = file_path.replace('.tsv', '_output.tsv')
-        output_file_name = f"{file_name_without_ext}_output_{directory_name}.tsv"
-        merged_df_subset.to_csv(output_file_name, sep='\t', index=False)
-
-        processed_filepaths.append(output_file_name)
         processed_dfs.append(merged_df_subset)
         
     for file in processed_filepaths:
         processed_file_listbox.insert(0, file) # Shows list of processed files in 2nd listbox
-
+        sample_name = file.split('.')[0]
         count +=1
     if count == 0:
         completion_label["text"] = f"Please select a file to process."
@@ -85,38 +85,25 @@ def process_files():
     else:
         completion_label["text"] = f"Successfully processed {count} files."
 
+    merged_df_subset.to_csv(output_file_name, sep='\t', index=False)
+
     return processed_dfs, processed_filepaths  
 
 
 def merge_files():
-    for file in processed_filepaths:
-        sample_name = file.split('.')[0]
-    
     combined_df = pd.DataFrame()
 
     for df in processed_dfs:
         # df = df.rename(columns={'Intensity': (f'{sample_name} Intensity')})
-        df = df.rename(columns={'Intensity': sample_name})
+        # df = df.rename(columns={'Intensity': (f'Intensity for {sample_name}')})
         if combined_df.empty:
             combined_df = df
         else:
-            combined_df = pd.merge(combined_df, df, on=['Spectrum', 'Peptide', 'Prev AA', 'Protein ID', 'Entry Name', 'Gene', 'Mapped Proteins', 'Protein Description', 'Tryptic State'], how='outer')
+            combined_df = pd.merge(combined_df, df, on=['Peptide:Protein', 'Tryptic State'], how='outer')
 
-    # combined_df = pd.concat(processed_dfs)
-    # combined_df = reduce(lambda x, y: pd.merge(x, y, on = 'Spectrum'), processed_dfs)
-        # processed_dfs = df.set_index('Spectrum')
-
-    # combined_df = processed_dfs[0].join(processed_dfs[1:], how='inner').reset_index()
         
-    
     combined_df.to_csv('./final_output.csv', index=False)
-        # for df in processed_dfs:
-            
-        # merged_output = pd.concat(processed_dfs)
-
-
-        # print(len(merged_output))
-        # print(merged_output.columns)
+        
 
 
 ### Customize window and buttons 
