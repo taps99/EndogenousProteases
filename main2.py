@@ -5,7 +5,7 @@ from tkinter.ttk import *
 from tkinter import filedialog
 import pandas as pd
 import os
-from functools import reduce
+import numpy as np
 
 
 def browse_files():
@@ -22,21 +22,33 @@ def process_files():
     count = 0
     global processed_dfs
     global processed_filepaths
+    global sample_name
     processed_dfs = []
     processed_filepaths = []
+    # processed_dict = dict()
+    
 
-    processed_file_listbox.delete(0, tk.END)
-    for i in range(file_listbox.size()):
+    # processed_file_listbox.delete(0, tk.END)
+    for i, listbox_entry in enumerate(file_listbox.get(0, END)):
         file_path = file_listbox.get(i)
         directory_name = os.path.basename(os.path.dirname(file_path))
         file_name_without_ext = os.path.splitext(os.path.basename(file_path))[0]
 
         # Save the processed DataFrame to an output file
         output_file_name = f"{file_name_without_ext}_output_{directory_name}.tsv"
-        processed_filepaths.append(output_file_name)
+        sample_name = directory_name.split('.')[0]
+        
+        processed_filepaths.append(sample_name)
+        count +=1
+    # for file in processed_filepaths:
+    #     # processed_file_listbox.insert(0, file) # Shows list of processed files in 2nd listbox
+    #     sample_name = file.split('.')[0]
+    #     count +=1
 
+    # for i in range(file_listbox.size()):
+    for i, listbox_entry in enumerate(file_listbox.get(0, END)):
         # Read the TSV file
-        df = pd.read_csv(file_path, delimiter='\t', low_memory=False)
+        df = pd.read_csv(listbox_entry, delimiter='\t', low_memory=False)
         
         # Filter "Prev AA" column to exclude peptides that have K or R preceding them (This results in semi-tryptic peptides)
         mask_prev = (df["Prev AA"] != "K") & (df["Prev AA"] != "R")
@@ -59,8 +71,8 @@ def process_files():
         # Subset columns of interest that are useful to import into Perseus for further analysis
         # merged_df_subset = merged_df[["Spectrum", "Peptide", "Prev AA", "Intensity", "Protein ID", "Entry Name", "Gene", "Mapped Proteins", "Protein Description", "Tryptic State"]]
         merged_df["Peptide:Protein"] = merged_df[['Peptide', 'Protein Description']].agg(':'.join, axis=1)
-        merged_df_subset = merged_df[['Peptide:Protein', 'Tryptic State', 'Intensity']]
-        merged_df_subset = merged_df_subset.rename(columns={'Intensity': (f'{sample_name} Intensity')})
+        merged_df_subset = merged_df[['Peptide:Protein', 'Tryptic State', 'Peptide', 'Protein Description']]
+        # merged_df_subset = merged_df_subset.rename(columns={'Intensity': (f'{sample_name} Intensity')})
 
         # Adding a column to show whether a peptide is semi-tryptic or fully non-tryptic
         # merged_df_subset['Tryptic State'] = merged_df_subset.apply(lambda row: 'Semi-Tryptic' if row['Prev AA'] == 'K' or row['Prev AA'] == 'R' or row['Peptide'].endswith("K") or row['Peptide'].endswith("R") else 'Non-Tryptic', axis=1)
@@ -70,14 +82,54 @@ def process_files():
 
         # merged_df_subset.loc[semi_mask, "Tryptic State"] = "Semi-Tryptic"
         # merged_df_subset.loc[nontryp_mask, "Tryptic State"] = "Non-Tryptic"
-
-
+        
         processed_dfs.append(merged_df_subset)
         
-    for file in processed_filepaths:
-        processed_file_listbox.insert(0, file) # Shows list of processed files in 2nd listbox
-        sample_name = file.split('.')[0]
-        count +=1
+    processed_dict = dict(zip(processed_filepaths, processed_dfs))
+    print(processed_dict)
+    unique_list = []
+    bleh = []
+    combined_df = pd.concat(processed_dfs, ignore_index=TRUE)
+
+    result_df = pd.DataFrame(columns=['Peptide:Protein'])
+
+
+    unique_list=[]
+    for df in processed_dfs: # GETS UNIQUE PEPTIDES FROM EACH SAMPLE
+        # unique_peptides = df['Peptide:Protein'].unique() # Generates a numpy array of all unique peptides found in a given sample
+        unique_peptides = df.drop_duplicates(subset=['Peptide:Protein'])
+        unique_list.append(unique_peptides) # List of numpy arrays, which should contain all unique peptides for all samples
+        print(unique_peptides)
+
+    # bleh = []
+    # for arr in unique_list: # CONVERT ARRAYS TO DFs
+    #     unique_df = pd.DataFrame(arr, columns=['Peptide:Protein'])
+    #     bleh.append(unique_df)
+    # print(len(bleh))
+
+    combined_df_final = pd.concat(unique_list) # CONCAT THE UNIQUE PEPTIDES FROM EACH SAMPLE INTO ONE LARGE DF
+    # master_df = combined_df_final['Peptide:Protein'].unique() # THEN ONLY KEEP UNIQUE ONES, WHICH MEANS THIS ONE CONTAINS ALL UNIQUE PEPTIDES FROM ALL SAMPLES
+    not_master_df = combined_df_final.drop_duplicates(subset=['Peptide:Protein'])
+    master_df = pd.DataFrame(not_master_df, columns=['Peptide:Protein', 'Tryptic State']) # DF that contains all unique peptides across all samples
+    
+    print(len(master_df))
+ 
+    split_data = master_df['Peptide:Protein'].str.split(':', n=1, expand=True)
+    master_df['Peptide'] = split_data[0]
+    master_df['Protein'] = split_data[1]
+
+    # master_df['Tryptic State'] = master_df['Peptide:Protein'].map(combined_df.set_index('Peptide:Protein')['Tryptic State'])
+
+    for i, df in enumerate(processed_dict.values()):
+        sample_name = list(processed_dict.keys())[i]
+        for peptide in master_df:
+            master_df[sample_name] = master_df['Peptide:Protein'].isin(df['Peptide:Protein']).astype(int)
+    
+    
+    master_df.to_csv('./final_output.csv', index=False)
+
+        
+
     if count == 0:
         completion_label["text"] = f"Please select a file to process."
     elif count == 1:
@@ -85,32 +137,60 @@ def process_files():
     else:
         completion_label["text"] = f"Successfully processed {count} files."
 
-    merged_df_subset.to_csv(output_file_name, sep='\t', index=False)
 
-    return processed_dfs, processed_filepaths  
+    # merged_df_subset.to_csv('./{output_file_name}', sep='\t', index=False)
+
+    return processed_dfs  
 
 
-def merge_files():
-    combined_df = pd.DataFrame()
+# def merge_files():
+#     unique_list = []
+#     bleh = []
+#     combined_df = pd.concat(processed_dfs, ignore_index=TRUE)
 
-    for df in processed_dfs:
-        # df = df.rename(columns={'Intensity': (f'{sample_name} Intensity')})
-        # df = df.rename(columns={'Intensity': (f'Intensity for {sample_name}')})
-        if combined_df.empty:
-            combined_df = df
-        else:
-            combined_df = pd.merge(combined_df, df, on=['Peptide:Protein', 'Tryptic State'], how='outer')
+#     result_df = pd.DataFrame(columns=['Peptide:Protein'])
 
+
+#     unique_list=[]
+#     for df in processed_dfs: # GETS UNIQUE PEPTIDES FROM EACH SAMPLE
+#         # df_all = df1.merge(df.drop_duplicates(), on=['Peptide:Protein', 'Tryptic State'], how='left', indicator=True)
+#         unique_peptides = df['Peptide:Protein'].unique() # Generates a numpy array of all unique peptides found in a given sample
+#         unique_list.append(unique_peptides) # List of numpy arrays, which should contain all unique peptides for all samples
+
+#     bleh = []
+#     for arr in unique_list: # CONVERT ARRAYS TO DFs
+#         unique_df = pd.DataFrame(arr, columns=['Peptide:Protein'])
+#         bleh.append(unique_df)
+#     # print(len(bleh))
+
+#     combined_df_final = pd.concat(bleh) # CONCAT THE UNIQUE PEPTIDES FROM EACH SAMPLE INTO ONE LARGE DF
+#     master_df = combined_df_final['Peptide:Protein'].unique() # THEN ONLY KEEP UNIQUE ONES, WHICH MEANS THIS ONE CONTAINS ALL UNIQUE PEPTIDES FROM ALL SAMPLES
+#     master_df = pd.DataFrame(master_df, columns=['Peptide:Protein']) # DF that contains all unique peptides across all samples
+    
+#     print(len(master_df))
+ 
+
+#     for i, df in enumerate(processed_dfs, start=1):
+#         sample_name = f'Sample {i}'
+
+#         for peptide in master_df:
+#             master_df[sample_name] = master_df['Peptide:Protein'].isin(df['Peptide:Protein']).astype(int)
+    
+#     # print(master_df.columns[1:])
+    
+
+#     master_df.to_csv('./final_output.csv', index=False)
         
-    combined_df.to_csv('./final_output.csv', index=False)
-        
+
+
+
 
 
 ### Customize window and buttons 
 # Initialize window
 window = tk.Tk()
 window.title("Non-Tryptic Peptide Extractor")
-window.geometry("900x700")
+window.geometry("700x400")
 
 # Style configuration
 style = ttk.Style()
@@ -146,14 +226,14 @@ file_listbox.grid(row=1, column=0, columnspan=2, padx=10, sticky=tk.W)
 completion_label = Label(window, text=" ")
 completion_label.grid(row=3, column=0, pady=10, padx=10, sticky=tk.W)
 
-pfl_label = Label(window, text="List of processed files:")
-pfl_label.grid(row=4, column=0, pady=10, padx=10, sticky=tk.W)
+# pfl_label = Label(window, text="List of processed files:")
+# pfl_label.grid(row=4, column=0, pady=10, padx=10, sticky=tk.W)
 
-processed_file_listbox = tk.Listbox(window, selectmode=tk.MULTIPLE, width=100, height=10)
-processed_file_listbox.grid(row=5, column=0, columnspan=2, padx=10, sticky=tk.W)
+# processed_file_listbox = tk.Listbox(window, selectmode=tk.MULTIPLE, width=100, height=10)
+# processed_file_listbox.grid(row=5, column=0, columnspan=2, padx=10, sticky=tk.W)
 
-merge_button = ttk.Button(window, text="Merge", command=merge_files)
-merge_button.grid(row=6, column=1, pady=10, sticky=tk.E)
+# merge_button = ttk.Button(window, text="Merge", command=merge_files)
+# merge_button.grid(row=6, column=1, pady=10, sticky=tk.E)
 
 # process_button.pack(in_=top, side=LEFT)
 
