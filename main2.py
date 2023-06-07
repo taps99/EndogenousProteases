@@ -72,63 +72,70 @@ def process_files():
         # merged_df_subset = merged_df[["Spectrum", "Peptide", "Prev AA", "Intensity", "Protein ID", "Entry Name", "Gene", "Mapped Proteins", "Protein Description", "Tryptic State"]]
         merged_df["Peptide:Protein"] = merged_df[['Peptide', 'Protein Description']].agg(':'.join, axis=1)
         merged_df_subset = merged_df[['Peptide:Protein', 'Tryptic State', 'Peptide', 'Protein Description']]
-        # merged_df_subset = merged_df_subset.rename(columns={'Intensity': (f'{sample_name} Intensity')})
-
-        # Adding a column to show whether a peptide is semi-tryptic or fully non-tryptic
-        # merged_df_subset['Tryptic State'] = merged_df_subset.apply(lambda row: 'Semi-Tryptic' if row['Prev AA'] == 'K' or row['Prev AA'] == 'R' or row['Peptide'].endswith("K") or row['Peptide'].endswith("R") else 'Non-Tryptic', axis=1)
-
-        # semi_mask = ((merged_df_subset["Prev AA"] == "K" | merged_df_subset["Prev AA"] == "R" ) | (merged_df_subset["Peptide"].str.endswith("K") | merged_df_subset["Peptide"].str.endswith("R")))
-        # nontryp_mask = ((merged_df_subset["Prev AA"] != "K" | merged_df_subset["Prev AA"] != "R" ) & ~(merged_df_subset["Peptide"].str.endswith("K") | merged_df_subset["Peptide"].str.endswith("R")))
-
-        # merged_df_subset.loc[semi_mask, "Tryptic State"] = "Semi-Tryptic"
-        # merged_df_subset.loc[nontryp_mask, "Tryptic State"] = "Non-Tryptic"
         
         processed_dfs.append(merged_df_subset)
         
-    processed_dict = dict(zip(processed_filepaths, processed_dfs))
-    print(processed_dict)
-    unique_list = []
-    bleh = []
-    combined_df = pd.concat(processed_dfs, ignore_index=TRUE)
 
+
+
+######## Peptide-level output #######
+    processed_dict = dict(zip(processed_filepaths, processed_dfs))
+    # print(processed_dict_peptide)
+
+    combined_df = pd.concat(processed_dfs, ignore_index=TRUE)
     result_df = pd.DataFrame(columns=['Peptide:Protein'])
 
 
-    unique_list=[]
+    unique_peptide_dfs=[]
     for df in processed_dfs: # GETS UNIQUE PEPTIDES FROM EACH SAMPLE
         # unique_peptides = df['Peptide:Protein'].unique() # Generates a numpy array of all unique peptides found in a given sample
         unique_peptides = df.drop_duplicates(subset=['Peptide:Protein'])
-        unique_list.append(unique_peptides) # List of numpy arrays, which should contain all unique peptides for all samples
-        print(unique_peptides)
+        unique_peptide_dfs.append(unique_peptides) 
+        # print(unique_peptides)
 
-    # bleh = []
-    # for arr in unique_list: # CONVERT ARRAYS TO DFs
-    #     unique_df = pd.DataFrame(arr, columns=['Peptide:Protein'])
-    #     bleh.append(unique_df)
-    # print(len(bleh))
 
-    combined_df_final = pd.concat(unique_list) # CONCAT THE UNIQUE PEPTIDES FROM EACH SAMPLE INTO ONE LARGE DF
+    combined_peptide_df = pd.concat(unique_peptide_dfs) # CONCAT THE UNIQUE PEPTIDES FROM EACH SAMPLE INTO ONE LARGE DF
     # master_df = combined_df_final['Peptide:Protein'].unique() # THEN ONLY KEEP UNIQUE ONES, WHICH MEANS THIS ONE CONTAINS ALL UNIQUE PEPTIDES FROM ALL SAMPLES
-    not_master_df = combined_df_final.drop_duplicates(subset=['Peptide:Protein'])
-    master_df = pd.DataFrame(not_master_df, columns=['Peptide:Protein', 'Tryptic State']) # DF that contains all unique peptides across all samples
+    peptide_df = combined_peptide_df.drop_duplicates(subset=['Peptide:Protein'])
+    master_peptide_df = pd.DataFrame(peptide_df, columns=['Peptide:Protein', 'Tryptic State']) # DF that contains all unique peptides across all samples
     
-    print(len(master_df))
+    print(len(master_peptide_df))
  
-    split_data = master_df['Peptide:Protein'].str.split(':', n=1, expand=True)
-    master_df['Peptide'] = split_data[0]
-    master_df['Protein'] = split_data[1]
+    split_data = master_peptide_df['Peptide:Protein'].str.split(':', n=1, expand=True)
+    master_peptide_df['Peptide'] = split_data[0]
+    master_peptide_df['Protein'] = split_data[1]
 
     # master_df['Tryptic State'] = master_df['Peptide:Protein'].map(combined_df.set_index('Peptide:Protein')['Tryptic State'])
 
     for i, df in enumerate(processed_dict.values()):
         sample_name = list(processed_dict.keys())[i]
-        for peptide in master_df:
-            master_df[sample_name] = master_df['Peptide:Protein'].isin(df['Peptide:Protein']).astype(int)
+        for peptide in master_peptide_df:
+            master_peptide_df[sample_name] = master_peptide_df['Peptide:Protein'].isin(df['Peptide:Protein']).astype(int)
     
-    
-    master_df.to_csv('./final_output.csv', index=False)
+    master_peptide_df.to_csv('./peptide_output.csv', index=False)
 
-        
+
+
+############ Protein-level output ############ 
+
+    unique_protein_dfs = []
+    for df in processed_dfs:
+        unique_proteins = df.drop_duplicates(subset=['Protein Description'])
+        unique_protein_dfs.append(unique_peptides) 
+    
+    combined_protein_df = pd.concat(unique_protein_dfs) # CONCAT THE UNIQUE PEPTIDES FROM EACH SAMPLE INTO ONE LARGE DF
+    protein_df = combined_protein_df.drop_duplicates(subset=['Protein Description'])
+    master_protein_df = pd.DataFrame(protein_df, columns=['Protein Description', 'Tryptic State']) # DF that contains all unique peptides across all samples
+
+    print(len(master_protein_df))
+
+    for i, df in enumerate(processed_dict.values()):
+        sample_name = list(processed_dict.keys())[i]
+        for protein in master_protein_df:
+            master_protein_df[sample_name] = master_protein_df['Protein Description'].isin(df['Protein Description']).astype(int)
+    
+    master_protein_df.to_csv('./protein_output.csv', index=False)
+
 
     if count == 0:
         completion_label["text"] = f"Please select a file to process."
