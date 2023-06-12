@@ -71,7 +71,7 @@ def process_files():
         # Subset columns of interest that are useful to import into Perseus for further analysis
         # merged_df_subset = merged_df[["Spectrum", "Peptide", "Prev AA", "Intensity", "Protein ID", "Entry Name", "Gene", "Mapped Proteins", "Protein Description", "Tryptic State"]]
         merged_df["Peptide:Protein"] = merged_df[['Peptide', 'Protein Description']].agg(':'.join, axis=1)
-        merged_df_subset = merged_df[['Peptide:Protein', 'Tryptic State', 'Peptide', 'Protein Description']]
+        merged_df_subset = merged_df[['Peptide:Protein', 'Tryptic State', 'Peptide', 'Protein Description', 'Protein ID']]
         
         processed_dfs.append(merged_df_subset)
         
@@ -88,7 +88,6 @@ def process_files():
 
     unique_peptide_dfs=[]
     for df in processed_dfs: # GETS UNIQUE PEPTIDES FROM EACH SAMPLE
-        # unique_peptides = df['Peptide:Protein'].unique() # Generates a numpy array of all unique peptides found in a given sample
         unique_peptides = df.drop_duplicates(subset=['Peptide:Protein'])
         unique_peptide_dfs.append(unique_peptides) 
         # print(unique_peptides)
@@ -97,7 +96,7 @@ def process_files():
     combined_peptide_df = pd.concat(unique_peptide_dfs) # CONCAT THE UNIQUE PEPTIDES FROM EACH SAMPLE INTO ONE LARGE DF
     # master_df = combined_df_final['Peptide:Protein'].unique() # THEN ONLY KEEP UNIQUE ONES, WHICH MEANS THIS ONE CONTAINS ALL UNIQUE PEPTIDES FROM ALL SAMPLES
     peptide_df = combined_peptide_df.drop_duplicates(subset=['Peptide:Protein'])
-    master_peptide_df = pd.DataFrame(peptide_df, columns=['Peptide:Protein', 'Tryptic State']) # DF that contains all unique peptides across all samples
+    master_peptide_df = pd.DataFrame(peptide_df, columns=['Peptide:Protein', 'Tryptic State', 'Protein ID']) # DF that contains all unique peptides across all samples
     
     print(len(master_peptide_df))
  
@@ -121,11 +120,11 @@ def process_files():
     unique_protein_dfs = []
     for df in processed_dfs:
         unique_proteins = df.drop_duplicates(subset=['Protein Description'])
-        unique_protein_dfs.append(unique_peptides) 
+        unique_protein_dfs.append(unique_proteins) # Generates list of dataframes containing only the unique proteins from each sample
     
-    combined_protein_df = pd.concat(unique_protein_dfs) # CONCAT THE UNIQUE PEPTIDES FROM EACH SAMPLE INTO ONE LARGE DF
+    combined_protein_df = pd.concat(unique_protein_dfs) # CONCAT THE UNIQUE PROTEINS FROM EACH SAMPLE INTO ONE LARGE DF
     protein_df = combined_protein_df.drop_duplicates(subset=['Protein Description'])
-    master_protein_df = pd.DataFrame(protein_df, columns=['Protein Description', 'Tryptic State']) # DF that contains all unique peptides across all samples
+    master_protein_df = pd.DataFrame(protein_df, columns=['Protein Description', 'Tryptic State', 'Protein ID']) # DF that contains all unique peptides across all samples
 
     print(len(master_protein_df))
 
