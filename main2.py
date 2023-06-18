@@ -8,8 +8,9 @@ import os
 import numpy as np
 
 
+
 def browse_files():
-    file_paths = filedialog.askopenfilenames(filetypes=[("TSV files", "*.tsv"), ("All files", "*.*")])
+    file_paths = filedialog.askopenfilenames(filetypes=[("TSV files", "*.tsv"), ("All files", "*.*")], multiple=True)
     for file_path in file_paths:
         file_listbox.insert(tk.END, file_path)
 
@@ -50,18 +51,22 @@ def process_files():
         # Read the TSV file
         df = pd.read_csv(listbox_entry, delimiter='\t', low_memory=False)
         
-        # Filter "Prev AA" column to exclude peptides that have K or R preceding them (This results in semi-tryptic peptides)
-        mask_prev = (df["Prev AA"] != "K") & (df["Prev AA"] != "R")
-        df_prevnoKR = df[mask_prev]
+        # Removes fully-tryptic peptides
+        condition1 = ~(df['Peptide'].str.endswith('K') | df['Peptide'].str.endswith('R') & df['Prev AA'].isin(['K', 'R']))
 
-        # From this, we can filter out peptides that terminate with K or R as well
-        mask_end = ~(df["Peptide"].str.endswith("K") | df["Peptide"].str.endswith("R"))
-        df_endnoKR = df[mask_end]
+        # Removes peptides that were cut at K or R and at end of sequence
+        condition2 = ~(df['Prev AA'].isin(['K', 'R']) & df['Next AA'].isin(['-']))
 
-        # Concatenate the df containing semi-tryptic peptides without preceding K/R's, and the df containing semi-tryptic peptides that don't terminate with K/R's
-        merged_df = pd.concat([df_prevnoKR, df_endnoKR]).drop_duplicates().reset_index(drop=True)
-        
+        # Removes peptides that were cut at K or R at the beginning of sequence
+        condition3 = ~(df['Prev AA'].isin(['-']) & (df['Peptide'].str.endswith('K') | df['Peptide'].str.endswith('R')))
 
+
+        # Put dfs using all 3 conditions into one, and drop duplicate rows
+        merged_df = df[condition1 & condition2 & condition3]
+        merged_df = merged_df.drop_duplicates().reset_index(drop=True)
+
+
+        # Create Tryptic State column
         prev_aa_mask = merged_df['Prev AA'].str.contains('K|R')
         peptide_end_mask = merged_df['Peptide'].str.endswith('K') | merged_df['Peptide'].str.endswith('R')
 
@@ -71,7 +76,7 @@ def process_files():
         # Subset columns of interest that are useful to import into Perseus for further analysis
         # merged_df_subset = merged_df[["Spectrum", "Peptide", "Prev AA", "Intensity", "Protein ID", "Entry Name", "Gene", "Mapped Proteins", "Protein Description", "Tryptic State"]]
         merged_df["Peptide:Protein"] = merged_df[['Peptide', 'Protein Description']].agg(':'.join, axis=1)
-        merged_df_subset = merged_df[['Peptide:Protein', 'Tryptic State', 'Peptide', 'Protein Description', 'Protein ID']]
+        merged_df_subset = merged_df[['Peptide:Protein', 'Tryptic State', 'Peptide', 'Prev AA', 'Next AA', 'Protein Description', 'Protein ID']]
         
         processed_dfs.append(merged_df_subset)
         
@@ -96,7 +101,7 @@ def process_files():
     combined_peptide_df = pd.concat(unique_peptide_dfs) # CONCAT THE UNIQUE PEPTIDES FROM EACH SAMPLE INTO ONE LARGE DF
     # master_df = combined_df_final['Peptide:Protein'].unique() # THEN ONLY KEEP UNIQUE ONES, WHICH MEANS THIS ONE CONTAINS ALL UNIQUE PEPTIDES FROM ALL SAMPLES
     peptide_df = combined_peptide_df.drop_duplicates(subset=['Peptide:Protein'])
-    master_peptide_df = pd.DataFrame(peptide_df, columns=['Peptide:Protein', 'Tryptic State', 'Protein ID']) # DF that contains all unique peptides across all samples
+    master_peptide_df = pd.DataFrame(peptide_df, columns=['Peptide:Protein', 'Tryptic State', 'Protein ID', 'Prev AA', 'Next AA']) # DF that contains all unique peptides across all samples
     
     print(len(master_peptide_df))
  
@@ -114,26 +119,32 @@ def process_files():
     master_peptide_df.to_csv('./peptide_output.csv', index=False)
 
 
+ ############ Protein-level output ############ 
+    # Drop duplicates based on protein column to get only one row per protein, presence still based on peptide associated with this protein
+    proteins_df = master_peptide_df.drop_duplicates(subset=['Protein'])
+    proteins_df.to_csv('./protein_output.csv', index=False)
 
-############ Protein-level output ############ 
 
-    unique_protein_dfs = []
-    for df in processed_dfs:
-        unique_proteins = df.drop_duplicates(subset=['Protein Description'])
-        unique_protein_dfs.append(unique_proteins) # Generates list of dataframes containing only the unique proteins from each sample
+
+# ############ Protein-level output ############ 
+
+#     unique_protein_dfs = []
+#     for df in processed_dfs:
+#         unique_proteins = df.drop_duplicates(subset=['Protein Description'])
+#         unique_protein_dfs.append(unique_proteins) # Generates list of dataframes containing only the unique proteins from each sample
     
-    combined_protein_df = pd.concat(unique_protein_dfs) # CONCAT THE UNIQUE PROTEINS FROM EACH SAMPLE INTO ONE LARGE DF
-    protein_df = combined_protein_df.drop_duplicates(subset=['Protein Description'])
-    master_protein_df = pd.DataFrame(protein_df, columns=['Protein Description', 'Tryptic State', 'Protein ID']) # DF that contains all unique peptides across all samples
+#     combined_protein_df = pd.concat(unique_protein_dfs) # CONCAT THE UNIQUE PROTEINS FROM EACH SAMPLE INTO ONE LARGE DF
+#     protein_df = combined_protein_df.drop_duplicates(subset=['Protein Description'])
+#     master_protein_df = pd.DataFrame(protein_df, columns=['Protein Description', 'Tryptic State', 'Protein ID']) # DF that contains all unique peptides across all samples
 
-    print(len(master_protein_df))
+#     print(len(master_protein_df))
 
-    for i, df in enumerate(processed_dict.values()):
-        sample_name = list(processed_dict.keys())[i]
-        for protein in master_protein_df:
-            master_protein_df[sample_name] = master_protein_df['Protein Description'].isin(df['Protein Description']).astype(int)
+#     for i, df in enumerate(processed_dict.values()):
+#         sample_name = list(processed_dict.keys())[i]
+#         for protein in master_protein_df:
+#             master_protein_df[sample_name] = master_protein_df['Protein Description'].isin(df['Protein Description']).astype(int)
     
-    master_protein_df.to_csv('./protein_output.csv', index=False)
+#     master_protein_df.to_csv('./protein_output1.csv', index=False)
 
 
     if count == 0:
