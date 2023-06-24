@@ -2,12 +2,20 @@ import pandas as pd
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-import inspect
 
 peptide_df_all = pd.read_csv("./peptide_output.csv")
 
 # subset of peptide_df that only contains peptides that appear in at least 3 of the 4 mutant samples, but don't appear in WT samples
-subset_df_4 = peptide_df_all[(peptide_df_all.iloc[:, 7:11].sum(axis=1)  > 3) & (peptide_df_all.iloc[:, 11:].sum(axis=1) == 0)]
+subset_df = peptide_df_all[(peptide_df_all.iloc[:, 7:11].sum(axis=1)  >= 3) & (peptide_df_all.iloc[:, 11:].sum(axis=1) == 0)]
+subset_df.to_csv('./mutant_only_subset.csv', index=False)
+
+# subset the non-tryptic peptides from peptide_df_all and from subset_df
+peptide_df_nontryp = peptide_df_all[peptide_df_all['Tryptic State'] == 'Non-Tryptic']
+print(len(peptide_df_nontryp)) # 312 fully non-tryptic peptides
+
+subset_df_nontryp = subset_df[subset_df['Tryptic State'] == 'Non-Tryptic']
+print(len(subset_df_nontryp)) # 6 fully non-tryptic peptides in subset df
+
 
 # Output accession IDs to file
     # output_file = 'accession_IDs.csv'
@@ -22,7 +30,7 @@ subset_df_4 = peptide_df_all[(peptide_df_all.iloc[:, 7:11].sum(axis=1)  > 3) & (
 
 
 # The hydrophobic amino acids include alanine (Ala, A), valine (Val, V), leucine (Leu, L), isoleucine (Ile, I), proline (Pro, P), phenylalanine (Phe, F) and cysteine (Cys, C).
-# Hydrophobic AAs are A, V, L, I, P, F, C
+# Hydrophobic AAs are A, V, I, L, P, F, G, M
 
 # What do we want:
 # Counts for Prev AA, Next AA, First AA, Last AA
@@ -35,6 +43,30 @@ def get_last_letter(text):
 
 
 def aa_counts(peptide_df, name):
+    amino_acids_dict = {
+        'A': '#F5B107',
+        'R': '#0D50C5',
+        'N': '#0D50C5',
+        'D': '#0D50C5',
+        'C': '#0D50C5',
+        'E': '#0D50C5',
+        'Q': '#0D50C5',
+        'G': '#0D50C5',
+        'H': '#0D50C5',
+        'I': '#F5B107',
+        'L': '#F5B107',
+        'K': '#0D50C5',
+        'M': '#F5B107',
+        'F': '#F5B107',
+        'P': '#F5B107',
+        'S': '#0D50C5',
+        'T': '#0D50C5',
+        'W': '#F5B107',
+        'Y': '#0D50C5',
+        'V': '#F5B107',
+        '-': 'red'
+    }
+
     peptide_df['First AA'] = peptide_df['Peptide'].apply(get_first_letter)
     peptide_df['Last AA'] = peptide_df['Peptide'].apply(get_last_letter)
 
@@ -50,40 +82,12 @@ def aa_counts(peptide_df, name):
     counts_df.index.name = 'Amino Acid'
     counts_df.to_csv(f'./{name}_counts_df.csv')
 
-    amino_acids_dict = {
-        'A': 'hydrophobic',
-        'R': 'hydrophilic',
-        'N': 'hydrophilic',
-        'D': 'hydrophilic',
-        'C': 'hydrophobic',
-        'E': 'hydrophilic',
-        'Q': 'hydrophilic',
-        'G': 'hydrophobic',
-        'H': 'hydrophilic',
-        'I': 'hydrophobic',
-        'L': 'hydrophobic',
-        'K': 'hydrophilic',
-        'M': 'hydrophobic',
-        'F': 'hydrophobic',
-        'P': 'hydrophobic',
-        'S': 'hydrophilic',
-        'T': 'hydrophilic',
-        'W': 'hydrophobic',
-        'Y': 'hydrophilic',
-        'V': 'hydrophobic'
-    }
-
-    color_dict = {
-        'hydrophobic': '#F5B107',
-        'hydrophilic': '#0D50C5'
-    }
-
-    colors = [color_dict.get(amino_acids_dict.get(aa, 'hydrophilic')) for aa in counts_df.index]
-
     fig, axes = plt.subplots(2,2, figsize=(9,9))
 
     for ax_idx, col in zip(axes.ravel(), counts_df.columns):
         counts_df_sorted = counts_df.sort_values(by=col, ascending=False)
+        colors = [amino_acids_dict[amino] for amino in counts_df_sorted.index]
+
         # ax_idx = axes[ax]
         ax_idx.bar(counts_df_sorted.index, counts_df_sorted[col], color=colors)
         ax_idx.set_title(col)
@@ -93,29 +97,9 @@ def aa_counts(peptide_df, name):
         # for i, v in enumerate(col):
         #     ax_idx.text(i, v, str(v), ha='center', va='bottom')
 
-    # # Create the bar chart using Pandas plotting
-    # prev_AA_counts.plot(kind='bar', ax=ax1)
-    # ax1.set_title('Prev AA')
-    # ax1.set_xlabel('Amino Acid')
-    # ax1.set_ylabel('Frequency')
-
-    # for i, v in enumerate(prev_AA_counts):
-    #     ax1.text(i, v, str(v), ha='center', va='bottom')
-
-    # first_AA_counts.plot(kind='bar', ax=ax2)
-    # ax2.set_title('First AA')
-    # ax2.set_xlabel('Amino Acid')
-    # ax2.set_ylabel('Frequency')
-
-    # for i, v in enumerate(first_AA_counts):
-    #     ax2.text(i, v, str(v), ha='center', va='bottom')
-
     plt.subplots_adjust(hspace=0.5, wspace=0.5)
     plt.savefig(f'./{name}_counts_bargraph.png') 
-
-
-    # Display the chart
     plt.show()
 
 aa_counts(peptide_df_all, "all_peptides")
-aa_counts(subset_df_4, "mutant_only_subset")
+aa_counts(subset_df, "mutant_only_subset")

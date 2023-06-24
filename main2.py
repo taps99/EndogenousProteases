@@ -24,6 +24,7 @@ def process_files():
     global processed_dfs
     global processed_filepaths
     global sample_name
+    unprocessed_dfs = []
     processed_dfs = []
     processed_filepaths = []
     # processed_dict = dict()
@@ -50,16 +51,15 @@ def process_files():
     for i, listbox_entry in enumerate(file_listbox.get(0, END)):
         # Read the TSV file
         df = pd.read_csv(listbox_entry, delimiter='\t', low_memory=False)
+        unprocessed_dfs.append(df)
         
+
         # Removes fully-tryptic peptides
         condition1 = ~(df['Peptide'].str.endswith('K') | df['Peptide'].str.endswith('R') & df['Prev AA'].isin(['K', 'R']))
-
         # Removes peptides that were cut at K or R and at end of sequence
         condition2 = ~(df['Prev AA'].isin(['K', 'R']) & df['Next AA'].isin(['-']))
-
         # Removes peptides that were cut at K or R at the beginning of sequence
         condition3 = ~(df['Prev AA'].isin(['-']) & (df['Peptide'].str.endswith('K') | df['Peptide'].str.endswith('R')))
-
 
         # Put dfs using all 3 conditions into one, and drop duplicate rows
         merged_df = df[condition1 & condition2 & condition3]
@@ -87,8 +87,14 @@ def process_files():
     processed_dict = dict(zip(processed_filepaths, processed_dfs))
     # print(processed_dict_peptide)
 
-    combined_df = pd.concat(processed_dfs, ignore_index=TRUE)
-    result_df = pd.DataFrame(columns=['Peptide:Protein'])
+
+    combined_df = pd.concat(unprocessed_dfs, ignore_index=TRUE)
+    combined_df["Peptide:Protein"] = combined_df[['Peptide', 'Protein Description']].agg(':'.join, axis=1)
+    combined_df.to_csv('./all_peptides.csv', index=False)
+
+    combined_df_subset = combined_df[['Peptide:Protein', 'Peptide', 'Prev AA', 'Next AA', 'Protein Description', 'Protein ID']].drop_duplicates(subset='Protein ID')
+    combined_df_subset.to_csv('all_unique_proteins.csv', index=False)
+    # result_df = pd.DataFrame(columns=['Peptide:Protein'])
 
 
     unique_peptide_dfs=[]
@@ -121,30 +127,10 @@ def process_files():
 
  ############ Protein-level output ############ 
     # Drop duplicates based on protein column to get only one row per protein, presence still based on peptide associated with this protein
-    proteins_df = master_peptide_df.drop_duplicates(subset=['Protein'])
+    proteins_df = master_peptide_df.drop_duplicates(subset=['Protein ID'])
     proteins_df.to_csv('./protein_output.csv', index=False)
 
 
-
-# ############ Protein-level output ############ 
-
-#     unique_protein_dfs = []
-#     for df in processed_dfs:
-#         unique_proteins = df.drop_duplicates(subset=['Protein Description'])
-#         unique_protein_dfs.append(unique_proteins) # Generates list of dataframes containing only the unique proteins from each sample
-    
-#     combined_protein_df = pd.concat(unique_protein_dfs) # CONCAT THE UNIQUE PROTEINS FROM EACH SAMPLE INTO ONE LARGE DF
-#     protein_df = combined_protein_df.drop_duplicates(subset=['Protein Description'])
-#     master_protein_df = pd.DataFrame(protein_df, columns=['Protein Description', 'Tryptic State', 'Protein ID']) # DF that contains all unique peptides across all samples
-
-#     print(len(master_protein_df))
-
-#     for i, df in enumerate(processed_dict.values()):
-#         sample_name = list(processed_dict.keys())[i]
-#         for protein in master_protein_df:
-#             master_protein_df[sample_name] = master_protein_df['Protein Description'].isin(df['Protein Description']).astype(int)
-    
-#     master_protein_df.to_csv('./protein_output1.csv', index=False)
 
 
     if count == 0:
@@ -215,10 +201,7 @@ style = ttk.Style()
 style.configure("TButton", padding=6, background="#ccc")
 style.configure("TListbox", padding=10, background="#eee")
 
-# top = ttk.Frame(window)
-# top.pack()
-# bottom = ttk.Frame(window)
-# bottom.pack(side=BOTTOM)
+
 
 # Widgets
 browse_button = ttk.Button(window, text="Browse Files", command=browse_files)
