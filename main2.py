@@ -3,9 +3,9 @@ from tkinter import ttk
 from tkinter import *
 from tkinter.ttk import *
 from tkinter import filedialog
+from tkinter import messagebox
 import pandas as pd
 import os
-import numpy as np
 
 
 
@@ -19,6 +19,10 @@ def remove_files():
     for index in selected_files[::-1]:
         file_listbox.delete(index)
 
+def select_output_directory():
+    global output_directory
+    output_directory = filedialog.askdirectory()
+
 def process_files():
     count = 0
     global processed_dfs
@@ -29,8 +33,8 @@ def process_files():
     processed_filepaths = []
     # processed_dict = dict()
     
+    os.makedirs(output_directory, exist_ok=True)
 
-    # processed_file_listbox.delete(0, tk.END)
     for i, listbox_entry in enumerate(file_listbox.get(0, END)):
         file_path = file_listbox.get(i)
         directory_name = os.path.basename(os.path.dirname(file_path))
@@ -65,7 +69,6 @@ def process_files():
         merged_df = df[condition1 & condition2 & condition3]
         merged_df = merged_df.drop_duplicates().reset_index(drop=True)
 
-
         # Create Tryptic State column
         prev_aa_mask = merged_df['Prev AA'].str.contains('K|R')
         peptide_end_mask = merged_df['Peptide'].str.endswith('K') | merged_df['Peptide'].str.endswith('R')
@@ -83,20 +86,31 @@ def process_files():
 
 
 
-######## Peptide-level output #######
+######## Peptide-level output ########
     processed_dict = dict(zip(processed_filepaths, processed_dfs))
+    unprocessed_dict = dict(zip(processed_filepaths, unprocessed_dfs))
     # print(processed_dict_peptide)
 
-
+    # This is to get the file that contains ALL peptides from the input files (includes tryptic and non-tryptic)
     combined_df = pd.concat(unprocessed_dfs, ignore_index=TRUE)
     combined_df["Peptide:Protein"] = combined_df[['Peptide', 'Protein Description']].agg(':'.join, axis=1)
     combined_df.to_csv('./all_peptides.csv', index=False)
+    combined_df.to_csv(os.path.join(output_directory, 'all_peptides.csv'), index=False)
 
+
+    # This is to get the unique proteins from the entire dataset (includes tryptic and non-tryptic)
     combined_df_subset = combined_df[['Peptide:Protein', 'Peptide', 'Prev AA', 'Next AA', 'Protein Description', 'Protein ID']].drop_duplicates(subset='Protein ID')
+    for i, df in enumerate(unprocessed_dict.values()):
+        sample_name = list(unprocessed_dict.keys())[i]
+        for protein in combined_df_subset:
+            combined_df_subset[sample_name] = combined_df_subset['Protein ID'].isin(df['Protein ID']).astype(int)
+
     combined_df_subset.to_csv('all_unique_proteins.csv', index=False)
+    combined_df_subset.to_csv(os.path.join(output_directory, 'all_unique_proteins.csv'), index=False)
     # result_df = pd.DataFrame(columns=['Peptide:Protein'])
 
 
+    # This part involves the actual output of non-tryptic peptides + relevant information
     unique_peptide_dfs=[]
     for df in processed_dfs: # GETS UNIQUE PEPTIDES FROM EACH SAMPLE
         unique_peptides = df.drop_duplicates(subset=['Peptide:Protein'])
@@ -122,16 +136,24 @@ def process_files():
         for peptide in master_peptide_df:
             master_peptide_df[sample_name] = master_peptide_df['Peptide:Protein'].isin(df['Peptide:Protein']).astype(int)
     
-    master_peptide_df.to_csv('./peptide_output.csv', index=False)
+    # File that contains all non-tryptic peptides across samples
+    master_peptide_df.to_csv('./non_tryptic_peptides.csv', index=False)
+    master_peptide_df.to_csv(os.path.join(output_directory, 'non_tryptic_peptides.csv'), index=False)
+
 
 
  ############ Protein-level output ############ 
     # Drop duplicates based on protein column to get only one row per protein, presence still based on peptide associated with this protein
     proteins_df = master_peptide_df.drop_duplicates(subset=['Protein ID'])
-    proteins_df.to_csv('./protein_output.csv', index=False)
+    proteins_df.to_csv('./non_tryptic_proteins.csv', index=False)
+    proteins_df.to_csv(os.path.join(output_directory, 'non_tryptic_proteins.csv'), index=False)
 
 
-
+    output_filepaths = ['./all_peptides.csv', './all_unique_proteins.csv', './non_tryptic_peptides.csv', './protein_output.csv']
+    for filepath in output_filepaths:
+        df = pd.read_csv(filepath)
+        peptide_count = df['Peptide'].nunique() # Modify this line if your column name differs
+        output_listbox.insert(tk.END, f'File: {filepath}, Number of peptides: {peptide_count}')
 
     if count == 0:
         completion_label["text"] = f"Please select a file to process."
@@ -143,48 +165,7 @@ def process_files():
 
     # merged_df_subset.to_csv('./{output_file_name}', sep='\t', index=False)
 
-    return processed_dfs  
-
-
-# def merge_files():
-#     unique_list = []
-#     bleh = []
-#     combined_df = pd.concat(processed_dfs, ignore_index=TRUE)
-
-#     result_df = pd.DataFrame(columns=['Peptide:Protein'])
-
-
-#     unique_list=[]
-#     for df in processed_dfs: # GETS UNIQUE PEPTIDES FROM EACH SAMPLE
-#         # df_all = df1.merge(df.drop_duplicates(), on=['Peptide:Protein', 'Tryptic State'], how='left', indicator=True)
-#         unique_peptides = df['Peptide:Protein'].unique() # Generates a numpy array of all unique peptides found in a given sample
-#         unique_list.append(unique_peptides) # List of numpy arrays, which should contain all unique peptides for all samples
-
-#     bleh = []
-#     for arr in unique_list: # CONVERT ARRAYS TO DFs
-#         unique_df = pd.DataFrame(arr, columns=['Peptide:Protein'])
-#         bleh.append(unique_df)
-#     # print(len(bleh))
-
-#     combined_df_final = pd.concat(bleh) # CONCAT THE UNIQUE PEPTIDES FROM EACH SAMPLE INTO ONE LARGE DF
-#     master_df = combined_df_final['Peptide:Protein'].unique() # THEN ONLY KEEP UNIQUE ONES, WHICH MEANS THIS ONE CONTAINS ALL UNIQUE PEPTIDES FROM ALL SAMPLES
-#     master_df = pd.DataFrame(master_df, columns=['Peptide:Protein']) # DF that contains all unique peptides across all samples
-    
-#     print(len(master_df))
- 
-
-#     for i, df in enumerate(processed_dfs, start=1):
-#         sample_name = f'Sample {i}'
-
-#         for peptide in master_df:
-#             master_df[sample_name] = master_df['Peptide:Protein'].isin(df['Peptide:Protein']).astype(int)
-    
-#     # print(master_df.columns[1:])
-    
-
-#     master_df.to_csv('./final_output.csv', index=False)
-        
-
+    return processed_dfs
 
 
 
@@ -193,17 +174,19 @@ def process_files():
 # Initialize window
 window = tk.Tk()
 window.title("Non-Tryptic Peptide Extractor")
-window.geometry("700x400")
+window.geometry("800x600")
 
 # Style configuration
 style = ttk.Style()
 # style.configure("TLabel", font=(None, 12))
-style.configure("TButton", padding=6, background="#ccc")
+style.configure("TButton", padding=5, background="#ccc", font=('TkDefaultFont'))
 style.configure("TListbox", padding=10, background="#eee")
+style.configure('bold.TButton', padding=5, background="blue", font=('TkDefaultFont', 9,"bold"))
 
 
 
 # Widgets
+
 browse_button = ttk.Button(window, text="Browse Files", command=browse_files)
 browse_button.grid(row=2, column=0, pady=10, padx=10, sticky=tk.W)
 # browse_button.pack(in_=top, side=LEFT)
@@ -212,8 +195,8 @@ remove_button = ttk.Button(window, text="Remove Selected", command=remove_files)
 remove_button.grid(row=2, column=0, pady=10, padx=10, sticky=tk.S)
 # remove_button.pack(in_=top, side=LEFT)
 
-process_button = ttk.Button(window, text="Process", command=process_files)
-process_button.grid(row=2, column=1, pady=10, sticky=tk.E)
+process_button = ttk.Button(window, text="Process", command=process_files, style='bold.TButton')
+process_button.grid(row=2, column=1, pady=10, padx=10, sticky=tk.E)
 
 listbox_label = ttk.Label(window, text="List of selected PSM files:")
 listbox_label.grid(row=0, column=0, pady=10, padx=10, sticky=tk.W)
@@ -226,8 +209,16 @@ file_listbox.grid(row=1, column=0, columnspan=2, padx=10, sticky=tk.W)
 completion_label = Label(window, text=" ")
 completion_label.grid(row=3, column=0, pady=10, padx=10, sticky=tk.W)
 
-# pfl_label = Label(window, text="List of processed files:")
-# pfl_label.grid(row=4, column=0, pady=10, padx=10, sticky=tk.W)
+output_listbox_label = Label(window, text="Output files:")
+output_listbox_label.grid(row=4, column=0, pady=10, padx=10, sticky=tk.W)
+
+output_listbox = tk.Listbox(window, selectmode=tk.MULTIPLE, width=100, height=10)
+output_listbox.grid(row=5, column=0, columnspan=2, padx=10, sticky=tk.W)
+
+output_directory_button = ttk.Button(window, text="Select Output Directory", command=select_output_directory)
+output_directory_button.grid(row=2, column=1, pady=10, sticky=tk.W)
+
+
 
 # processed_file_listbox = tk.Listbox(window, selectmode=tk.MULTIPLE, width=100, height=10)
 # processed_file_listbox.grid(row=5, column=0, columnspan=2, padx=10, sticky=tk.W)
@@ -236,10 +227,5 @@ completion_label.grid(row=3, column=0, pady=10, padx=10, sticky=tk.W)
 # merge_button.grid(row=6, column=1, pady=10, sticky=tk.E)
 
 # process_button.pack(in_=top, side=LEFT)
-
-# count = 0
-# text_f = f"Processed {count} files."
-# output_text = ttk.Label(window, text=text_f)
-# output_text.pack(pady=10)
 
 window.mainloop()
