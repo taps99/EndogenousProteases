@@ -135,6 +135,7 @@ class GUI:
         return self.processed_dfs, self.processed_filepaths
 
 
+
     def process_data(self, processed_filepaths):
         self.unprocessed_dfs = []
         count = 0
@@ -174,7 +175,6 @@ class GUI:
         # This is to get the file that contains ALL peptides from the input files (includes tryptic and non-tryptic)
         combined_df = pd.concat(unprocessed_dfs, ignore_index=True)
         combined_df["Peptide:Protein"] = combined_df[['Peptide', 'Protein Description']].agg(':'.join, axis=1)
-        # combined_df.to_csv('./all_peptides.csv', index=False)
         combined_df.to_csv(os.path.join(self.output_directory, 'all_peptides.csv'), index=False)
 
 
@@ -185,9 +185,8 @@ class GUI:
             for protein in combined_df_subset:
                 combined_df_subset[sample_name] = combined_df_subset['Protein ID'].isin(df['Protein ID']).astype(int)
 
-        # combined_df_subset.to_csv('all_unique_proteins.csv', index=False)
         combined_df_subset.to_csv(os.path.join(self.output_directory, 'all_unique_proteins.csv'), index=False)
-        # result_df = pd.DataFrame(columns=['Peptide:Protein'])
+
 
 
         # This part involves the actual output of non-tryptic peptides + relevant information
@@ -195,7 +194,6 @@ class GUI:
         for df in processed_dfs: # GETS UNIQUE PEPTIDES FROM EACH SAMPLE
             unique_peptides = df.drop_duplicates(subset=['Peptide:Protein'])
             unique_peptide_dfs.append(unique_peptides) 
-            # print(unique_peptides)
 
 
         combined_peptide_df = pd.concat(unique_peptide_dfs) # CONCAT THE UNIQUE PEPTIDES FROM EACH SAMPLE INTO ONE LARGE DF
@@ -279,70 +277,77 @@ class GUI:
 
         # Create Protein Sequence column in df and output to file
         peptide_df['Protein Sequence'] = [protein_sequences[peptide] for peptide in peptides_id]
-        peptide_df.to_csv(f'{self.output_directory}/nontryp_pept_sequences.csv', index=False)
+        # peptide_df.to_csv(f'{self.output_directory}/nontryp_pept_sequences.csv', index=False)
         # print(peptide_df.columns)
         return peptide_df
 
 
     def peptide_seq_match(self, df):
-        print(df)
-        print(type(df))
         # match peptide with protein sequence using re 
-        peptide = str(df['Peptide'])
-        prev_AA = str(df['Prev AA'])
-        tryp_state = str(df['Tryptic State'])
-        sequence = str(df['Protein Sequence'])
-        matches = re.finditer(peptide, sequence)
-        print(matches)
+        peptide = df['Peptide'].astype(str)
+        prev_AA = df['Prev AA'].astype(str)
+        tryp_state = df['Tryptic State'].astype(str)
+        sequence = df['Protein Sequence'].astype(str)
 
-        n_terminal_list = []
-        c_terminal_list = []
+        n_terminal_dict = {}
+        c_terminal_dict = {}
 
-        for match in matches:
-            # Gives start and end indices that you can use to get the amino acids before and after the match in a given sequence
-            start_index = match.start()
-            end_index = match.end()
+        for peptide, prev_AA, tryp_state, sequence in zip(peptide, prev_AA, tryp_state, sequence):
+            matches = list(re.finditer(peptide, sequence))
+            if matches:
+                match = matches[0]
+                start_index = match.start()
+                end_index = match.end()
+                # print(f"Match found for peptide {peptide} at index {start_index} to {end_index} in sequence {sequence}")
+        
+                # Calculate indices for extracting the 5 amino acids before and after the match
+                # 2nd argument acts as a boundary, so there's no values that go outside of the sequence length that can't be indexed (can't go below 0, can't go above length of sequence)
+                before_start_index = max(start_index - 5, 0)
+                after_end_index = min(end_index + 5, len(sequence))
 
-            # Calculate indices for extracting the 5 amino acids before and after the match
-            # 2nd argument acts as a boundary, so there's no values that go outside of the sequence length that can't be indexed (can't go below 0, can't go above length of sequence)
-            before_start_index = max(start_index - 5, 0)
-            after_end_index = min(end_index + 5, len(sequence))
+                # Extract 5 amino acids before and after the match
+                before_match = sequence[before_start_index:start_index]
+                after_match = sequence[end_index:after_end_index]
 
-            # Extract 5 amino acids before and after the match
-            before_match = sequence[before_start_index:start_index]
-            after_match = sequence[end_index:after_end_index]
-
-            n_terminal = before_match + peptide[:5]
-            c_terminal = peptide[-5:] + after_match
-            
-            if tryp_state == 'Non-Tryptic':
-                n_terminal_list.append(n_terminal)
-                c_terminal_list.append(c_terminal)
-            else:
-                if prev_AA == 'K' or prev_AA == 'R':
-                    c_terminal_list.append(c_terminal)
-                elif peptide.endswith('K') or peptide.endswith('R'):
-                    n_terminal_list.append(n_terminal)
-        # Add dashes to the end of sequences that are less than 10 aa long for N-terminal cleavages
-        for i in range(len(n_terminal_list)):
-            string = n_terminal_list[i]
-            while len(string) < 10:
-                string = "-" + string
-            n_terminal_list[i] = string
-        # Add dashes to beginning of sequences that are less than 10 aa long for C-terminal cleavages
-        for i in range(len(c_terminal_list)):
-            string = c_terminal_list[i]
-            while len(string) < 10:
-                string += "-"
-            c_terminal_list[i] = string
+                n_terminal = before_match + peptide[:5]
+                c_terminal = peptide[-5:] + after_match
+                # print(f"N-Terminus: {n_terminal}, C-Terminus: {c_terminal}")
                 
-        n_terminal_str = ''.join(n_terminal_list)
-        c_terminal_str = ''.join(c_terminal_list)
+                if tryp_state == 'Non-Tryptic':
+                    n_terminal_dict[peptide] = n_terminal
+                    c_terminal_dict[peptide] = c_terminal
+                else: # If its semi-tryptic
+                    if prev_AA in ['K', 'R']:
+                        c_terminal_dict[peptide] = c_terminal
+                        n_terminal_dict[peptide] = ""
+                    elif peptide.endswith('K') or peptide.endswith('R'):
+                        n_terminal_dict[peptide] = n_terminal
+                        c_terminal_dict[peptide] = ""
+  
+        # # Add dashes to the end of sequences that are less than 10 aa long for N-terminal cleavages
+        for peptide in n_terminal_dict:
+            string = n_terminal_dict[peptide]
+            while len(string) < 10:
+                if len(string) == 0:
+                    break
+                else:
+                    string = "-" + string
+            n_terminal_dict[peptide] = string
+        # # Add dashes to beginning of sequences that are less than 10 aa long for C-terminal cleavages
+        for peptide in c_terminal_dict:
+            string = c_terminal_dict[peptide]
+            while len(string) < 10:
+                if len(string) == 0:
+                    break
+                else:
+                    string += "-"
+            c_terminal_dict[peptide] = string
+                    
+        df['N-terminal'] = df['Peptide'].map(n_terminal_dict)
+        df['C-terminal'] = df['Peptide'].map(c_terminal_dict)
+        df.to_csv(f'{self.output_directory}/nontryp_pept_sequences.csv', index=False)
 
-        terminal_series = pd.Series({'N-terminal cleavage': n_terminal_str, 'C-terminal cleavage': c_terminal_str})
-        print(n_terminal_list)
-        # print(terminal_series)
-        return terminal_series
+        return df
     
 
     # This gets executed when you click 'Process' button
@@ -358,6 +363,7 @@ def main():
     window = tk.Tk()
     gui = GUI(window)
     window.mainloop()
+
 
 # executes main() if script is being run directly, doesn't execute if script is imported
 if __name__ == "__main__":
