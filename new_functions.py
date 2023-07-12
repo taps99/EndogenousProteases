@@ -242,54 +242,9 @@ def create_termini_list(df:pd.DataFrame, output_directory):
                                  df[['C-terminal', 'Protein ID', 'Protein']].rename(columns={'C-terminal': 'Non-Tryptic Termini'})])
     nontryp_termini = nontryp_termini.dropna()
 
-    nontryp_termini.to_csv(f'{output_directory}/non_tryp_termini.csv', index=False)
+    nontryp_termini.to_csv(f'{output_directory}/non-tryp_termini.csv', index=False)
     return nontryp_termini
 
-
-# def protease_match(df):
-#     current_directory = os.path.dirname(os.path.realpath(__file__))
-#     substrate_csv_path = os.path.join(current_directory, 'substrate.csv')
-#     substrate_df = pd.read_csv(substrate_csv_path)
-#     print(substrate_df.columns)
-
-#     amino_acid_dict = {
-#     'Ala': 'A',
-#     'Arg': 'R',
-#     'Asn': 'N',
-#     'Asp': 'D',
-#     'Cys': 'C',
-#     'Gln': 'Q',
-#     'Glu': 'E',
-#     'Gly': 'G',
-#     'His': 'H',
-#     'Ile': 'I',
-#     'Leu': 'L',
-#     'Lys': 'K',
-#     'Met': 'M',
-#     'Phe': 'F',
-#     'Pro': 'P',
-#     'Ser': 'S',
-#     'Thr': 'T',
-#     'Trp': 'W',
-#     'Tyr': 'Y',
-#     'Val': 'V'
-#     }
-    
-#     # Subset substrate_df to include relevant columns
-#     substrate_subsites = substrate_df.loc[:,['Substrate_name', 'Site_P4', 'Site_P3', 'Site_P2', 'Site_P1', 'Site_P1prime', 'Site_P2prime','Site_P3prime', 'Site_P4prime', 'organism', 'Protease', 'cleavage_type']]
-
-#     # Replace abbreviations with single letter code for amino acids
-#     substrate_subsites = substrate_subsites.replace(amino_acid_dict)
-
-#     # Join the amino acids in each subsite together to create an amino acid sequence representing the cleavage site of a substrate 
-#     substrate_subsites['Cleavage Site'] = substrate_subsites[['Site_P4', 'Site_P3', 'Site_P2', 'Site_P1', 'Site_P1prime', 'Site_P2prime','Site_P3prime', 'Site_P4prime']].apply(lambda row: ''.join(row.values.astype(str)), axis=1) # 95653 substrates total
-#     substrate_subsites = substrate_subsites.dropna(subset=['organism', 'Substrate_name', 'Protease'])
-#     print(len(substrate_subsites)) # 87968 substrates after dropping NA's
-
-#     # Organism
-#     organisms = substrate_subsites['organism'].unique().tolist() # 1417 unique organisms
-#     org = pd.Series(organisms)
-#     df 
 
 
 

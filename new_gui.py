@@ -8,19 +8,21 @@ import sys
 from new_functions import process_data, peptide_seq_match, get_protein_sequence, output_files, create_termini_list
 import threading
 import time
-from matching import termini_substrate_processing, exact_match, fuzzy_match
+from matching import substrate_processing, exact_match, fuzzy_match
 
 
 output_directory = ""
 organisms = []
+substrate_df = None
+termini_list = None
+
 # Function to open file explorer to select files to be processed
 def browse_files():
-    count = 0
-    processed_filepaths = []
-
     file_paths = filedialog.askopenfilenames(filetypes=[("TSV files", "*.tsv"), ("All files", "*.*")], multiple=True)
     for file_path in file_paths:
         file_listbox.insert(tk.END, file_path)
+    
+    switch_button_state()
 
 # Function to remove selected files from list
 def remove_files():
@@ -35,6 +37,7 @@ def select_output_directory():
     if len(str(output_directory)) > 0:
         output_directory_label["text"] = f"Output directory: {output_directory}"
     os.makedirs(output_directory, exist_ok=True)
+    switch_button_state()
     return output_directory
     
 # Function to setup interface elements (count of files, data structures to hold data,)
@@ -51,7 +54,7 @@ def setup():
         # output_file_name = f"{file_name_without_ext}_output_{directory_name}.tsv"
         sample_name = directory_name.split('.')[0]
         processed_filepaths.append(sample_name)
-        
+    
     return processed_filepaths, listbox_entries
 
 # This gets executed when you click 'Process' button
@@ -63,18 +66,24 @@ def process_files_button():
         messagebox.showerror("Error", "Please select input files before processing.")
         completion_label["text"] = f"Please select a file to process."
         return
-
     if not output_directory:
         messagebox.showerror("Error", "Please select output directory before processing.")
-
         return
-    
+
     process_thread = threading.Thread(target=processing_functions)
     process_thread.start()
 
+def switch_button_state():
+    if file_listbox.size() > 0 and output_directory:
+        process_button['state'] = tk.NORMAL
+        process_button['style'] = 'Accent.TButton'
+    # else:
+    #     process_button['state'] = tk.DISABLED
 
 def processing_functions():
     global organisms
+    global substrate_df
+    global termini_list
     processed_filepaths = setup()[0]
     listbox_entries = setup()[1]
     completion_label["text"] = "Initializing extraction..."
@@ -89,7 +98,7 @@ def processing_functions():
     for i in range(50, 81):
         barnum.set(i)
         time.sleep(0.05)
-    create_termini_list(peptide_seq_match(get_protein_sequence(non_tryp_peptides), output_directory), output_directory)
+    termini_list = create_termini_list(peptide_seq_match(get_protein_sequence(non_tryp_peptides), output_directory), output_directory)
     completion_label["text"] = "Finalizing..."
 
     # Check if the application is running as a script or a packaged application
@@ -99,48 +108,130 @@ def processing_functions():
     else:
     # The application is running as a script
         application_path = os.path.dirname(os.path.abspath(__file__))
+
     substrate_path = os.path.join(application_path, 'substrate.csv')
-    organisms = termini_substrate_processing(substrate_path)[0]
+    organisms, substrate_df = substrate_processing(substrate_path)
     window.after(0, update_organism_menu, organisms)
 
+    
     for i in range(80, 101):
         barnum.set(i)
         time.sleep(0.05)
+
     count = len(listbox_entries)
     if count == 1:
         completion_label["text"] = f"Successfully processed {count} file."
     else:
         completion_label["text"] = f"Successfully processed {count} files."
 
-    output_filepaths = []
-    for dirpath, dirnames, filenames in os.walk(output_directory):
-        for filename in filenames:
-            output_filepaths.append(os.path.join(dirpath, filename))
+    output_filepaths = [f'{output_directory}/all_peptides.csv', f'{output_directory}/all_unique_proteins.csv', f'{output_directory}/non-tryp_pept_sequences.csv', f'{output_directory}/non-tryptic_unique_proteins.csv', f'{output_directory}/non-tryp_termini.csv']
+    # for dirpath, dirnames, filenames in os.walk(output_directory):
+    #     for filename in filenames:
+    #         output_filepaths.append(os.path.join(dirpath, filename))
     paths_text = '\n'.join(output_filepaths)
     output_files_label["text"] = f"Output files:\n{paths_text}"
-    info_label["text"] = f"Protease matching for {output_filepaths[-2]}"
-    return organisms
+    termini_count = len(termini_list)
+    info_label["text"] = f"Protease matching for {termini_count} non-tryptic termini in:\n{output_filepaths[-1]}"
+    match_method_menu["state"] = tk.NORMAL
+    organism_menu["state"] = tk.NORMAL
+    protease_button["state"] = tk.NORMAL
+    protease_button["style"] = 'Accent.TButton'
+    return organisms, substrate_df, termini_list
 
 
 def protease_match_button():
+    search_term = update_organism_menu().capitalize()
+    method = update_method_menu()
+    if not search_term or not method:
+        messagebox.showerror("Error", "Please select a species and a matching method for protease matching.")
+        return
+
+    if not search_term:
+        messagebox.showerror("Error", "Please select a species for protease matching.")
+        return
+    if not method:
+        messagebox.showerror("Error", "Please select a matching method for protease matching.")
+        return
+    
     process_thread_2 = threading.Thread(target=protease_match)
     process_thread_2.start()
 
 
 def update_organism_menu(*args):
-    # organisms_var.set(organisms)
     search_term = organisms_var.get().lower()
     organism_menu['values'] = [org for org in organisms if search_term in org.lower()]
+    return search_term
+
+def update_method_menu(*args):
+    method = method_var.get()
+    return method
 
 
-# def organism_select(event):
-#     selected = organisms_var.get()
-#     print(selected)
 
-
+tree = None
 def protease_match():
-    pass
+    global substrate_df
+    global termini_list
+    global tree
 
+    search_term = update_organism_menu().capitalize()
+    method = update_method_menu()
+    if tree is not None:
+        tree.destroy()
+    tree = ttk.Treeview(second_tab, height=10)
+    tree['show'] = 'headings'
+
+
+    if method == 'Exact Match':
+        exact_matches = exact_match(search_term, substrate_df, termini_list, output_directory)
+        # Clear previous data in the treeview
+        for i in tree.get_children():
+            tree.delete(i)
+        columns = list(exact_matches.columns)
+    # Create the columns in the tree widget.
+        tree["columns"] = columns
+        for column in columns:
+            tree.column(column, width=100, stretch=tk.NO, anchor=tk.CENTER)
+            tree.heading(column, text=column)
+        # Add the DataFrame data to the tree widget.
+        for index, row in exact_matches.iterrows():
+            tree.insert('', 'end', values=list(row))
+        # return exact_matches
+
+    elif method == 'Fuzzy Match':
+        fuzzy_matches = fuzzy_match(search_term, substrate_df, termini_list, output_directory)
+        for i in tree.get_children():
+            tree.delete(i)
+        columns = list(fuzzy_matches.columns)
+    # Create the columns in the tree widget.
+        tree["columns"] = columns
+        for column in columns:
+            tree.column(column, width=10)
+            tree.heading(column, text=column)
+        # Add the DataFrame data to the tree widget.
+        for index, row in fuzzy_matches.iterrows():
+            tree.insert('', 'end', values=list(row))
+    
+    
+    tree.grid(row=5)
+    second_tab.grid_rowconfigure(5, weight=1)
+    second_tab.grid_columnconfigure(0, weight=1)
+
+    def on_resize(event):
+        # Calculate the total treeview width
+        width = event.width
+        n = len(tree["columns"]) + 1  # include identifier column as well
+        # Set each column's width to the total width divided by the number of columns
+        for column in tree["columns"]:
+            tree.column(column, width=width//n)
+    second_tab.bind('<Configure>', on_resize)
+
+
+    # Get column names from the DataFrame.
+
+
+
+    
 
 
 ######################
@@ -148,18 +239,21 @@ def protease_match():
 ######################
 window = tk.Tk()
 window.title("Non-Tryptic Peptide Extractor")
-window.geometry("1000x700")
-barnum = tk.IntVar()
+window.geometry("1000x800")
+window.resizable(width=False, height=False)
+
+
 # Style configuration of widgets
 style = ttk.Style()
 window.tk.call("source", "Azure-ttk-theme-main/azure.tcl")
 window.tk.call("set_theme", "dark")
 
-style.configure("TButton", padding=5, font=('TkDefaultFont'))
+style.configure("TButton", font=('TkDefaultFont'))
 style.configure("TListbox", padding=10)
 style.configure("TProgressBar", thickness=50)
 style.layout("TNotebook", [])
 style.configure("TNotebook", tabmargins=0)
+
 
 notebook = ttk.Notebook(window, style="TNotebook")
 notebook.grid()
@@ -168,32 +262,39 @@ main_tab.grid()
 
 notebook.add(main_tab, text="Non-Tryptic Peptide Extraction")
 
+# scrollbar = tk.Scrollbar(window)
+# scrollbar.grid()
 
 # Define + arrange widgets in the interface
+
+#### Main tab ####
 frame_browse = ttk.Frame(main_tab)
 frame_browse.grid(row=2, column=0, sticky=tk.W)
-browse_button = ttk.Button(frame_browse, text="Browse Files", command=browse_files)
+browse_button = ttk.Button(frame_browse, text="Browse Files", command=browse_files, style='Accent.TButton')
 browse_button.grid(row=2, column=0, pady=10, padx=10, sticky=tk.W)
 
 frame_remove = ttk.Frame(main_tab)
 frame_remove.grid(row=2, column=1, sticky=tk.W)
-remove_button = ttk.Button(frame_browse, text="Remove Selected", command=remove_files)
+remove_button = ttk.Button(frame_browse, text="Remove Selected", command=remove_files, style='Accent.TButton')
 remove_button.grid(row=2, column=1, pady=10, padx=10, sticky=tk.W)
 
 frame_process = ttk.Frame(main_tab)
-# frame_process.grid(row=2, column=2, sticky=tk.W)
-# frame_process.place(x=10,y=342)
-process_button = ttk.Button(main_tab, text="Process", command=process_files_button, style='Accent.TButton')
+process_button = ttk.Button(main_tab, text="Process", command=process_files_button, state=tk.DISABLED)
 process_button.grid(row=4, column=0, pady=10, padx=10, sticky=tk.W)
-# process_button.place(x=10,y=342)
 
 listbox_label = tk.Label(main_tab, text="List of selected PSM files:")
 listbox_label.grid(row=0, column=0, pady=10, padx=10, sticky=tk.W)
 
-file_listbox = tk.Listbox(main_tab, selectmode=tk.MULTIPLE, width=100, height=10, highlightbackground="#008BFF")
-file_listbox.grid(row=1, column=0, columnspan=2, padx=10, sticky=tk.W)
+listbox_frame = tk.Frame(main_tab)
+listbox_frame.grid(row=1, column=0, columnspan=2, sticky=tk.W)
+file_listbox = tk.Listbox(listbox_frame, selectmode=tk.MULTIPLE, width=100, height=7, highlightbackground="#008BFF")
+file_listbox.grid(row=1, column=0, columnspan=2, padx=(10,0), sticky=tk.W)
+scrollbar = ttk.Scrollbar(listbox_frame, orient="vertical")
+scrollbar.config(command=file_listbox.yview)
+scrollbar.grid(row=1, column=2, sticky=tk.NS)
+file_listbox.config(yscrollcommand=scrollbar.set)
 
-completion_label = tk.Label(main_tab, text="", fg='#008BFF', font=("TkDefaultFont", 11, "bold"), justify= tk.LEFT)
+completion_label = tk.Label(main_tab, text="", fg='#007fff', font=("TkDefaultFont", 11, "bold"), justify= tk.LEFT)
 completion_label.grid(row=9, column=0, pady=10, padx=5, sticky=tk.W)
 
 frame_output_files = tk.Frame(main_tab)
@@ -203,7 +304,7 @@ output_files_label.grid(row=12, column=0,pady=10, padx=10, sticky='w')
 
 frame_output_directory = tk.Frame(main_tab)
 frame_output_directory.grid(row=3, column=0, sticky=tk.W)
-output_directory_button = ttk.Button(frame_output_directory, text="Select Output Directory", command=select_output_directory)
+output_directory_button = ttk.Button(frame_output_directory, text="Select Output Directory", command=select_output_directory, style='Accent.TButton')
 output_directory_button.grid(row=3, column=0, pady=10, padx=10, sticky=tk.W)
 
 frame_output_directory_label = tk.Frame(main_tab)
@@ -211,35 +312,47 @@ frame_output_directory_label.grid(row=3, column=1, sticky=tk.W)
 output_directory_label = tk.Label(frame_output_directory, text="No output directory selected yet.")
 output_directory_label.grid(row=3, column=1, pady=10, padx=10, sticky=tk.W)
 
-# frame_progress_label = tk.Frame(main_tab)
-# frame_progress_label.grid(row=7, column=0, sticky=tk.W)
-# progress_label = tk.Label(frame_progress_label, text = "")
-# progress_label.grid(row=7, column=0, pady=10, padx=10, sticky=tk.W)
-
+barnum = tk.IntVar()
 loading_bar = ttk.Progressbar(main_tab, orient='horizontal', mode='determinate', length=200, variable=barnum, maximum=100.0)
 loading_bar.grid(row=8, column=0, pady=10, padx=10, sticky=tk.W)
+
+
 
 #### Protease Matching Tab ####
 second_tab = tk.Frame(notebook, width=1200, height=1600, highlightthickness=0)
 second_tab.grid()
 notebook.add(second_tab, text="Protease Matching")
 
-
-info_label = tk.Label(second_tab, text="Please perform non-tryptic peptide extraction before protease matching.", justify= tk.LEFT)
+info_label_frame = ttk.Frame(second_tab)
+info_label_frame.grid(row=1, column=0, sticky=tk.W)
+info_label = tk.Label(info_label_frame, text="Please perform non-tryptic peptide extraction before protease matching.", justify= tk.LEFT)
 info_label.grid(row=1, column=0, pady=10, padx=10, sticky=tk.W)
 
-organism_label = tk.Label(second_tab, text="Select species:", justify= tk.LEFT)
-organism_label.grid(row=2, column=0, pady=10, padx=10, sticky=tk.W)
-# threading.Thread(target=substrate_table_processing).start()\
+menu_frame = tk.Frame(second_tab)
+menu_frame.grid(row=2, column=0, sticky=tk.W)
+
+organism_label = tk.Label(menu_frame, text="Select species:", justify= tk.LEFT)
+organism_label.grid(row=2, column=0, padx=10, sticky=tk.W)
+# threading.Thread(target=substrate_table_processing).start()
+
+method_label = tk.Label(menu_frame, text="Select matching method:", justify= tk.LEFT)
+method_label.grid(row=2, column=1, padx=10, sticky=tk.W)
 
 organisms_var = tk.StringVar()
 organisms_var.trace("w", update_organism_menu)
-organism_menu = ttk.Combobox(second_tab, textvariable=organisms_var, width=30, justify= tk.LEFT)
-organism_menu.grid(row=3, column=0, padx=10, sticky=tk.W)
+organism_menu = ttk.Combobox(menu_frame, textvariable=organisms_var, width=30, justify= tk.LEFT, values = organisms, state=tk.DISABLED)
+organism_menu.grid(row=3, column=0, padx=10, pady=10, sticky=tk.W)
 organism_menu.bind('<<ComboboxSelected>>', update_organism_menu)
 
-protease_button = ttk.Button(second_tab, text="Match Termini", command=protease_match, style='Accent.TButton')
+protease_button = ttk.Button(second_tab, text="Match Termini", command=protease_match_button, state=tk.DISABLED)
 protease_button.grid(row=4, column=0, padx=10, pady=10, sticky=tk.W)
+
+method_var = tk.StringVar()
+method_var.trace("w", update_method_menu)
+match_method_menu = ttk.Combobox(menu_frame, textvariable=method_var, width=30, justify= tk.LEFT, values=['Exact Match', 'Fuzzy Match'], state=tk.DISABLED)
+match_method_menu.grid(row=3, column=1, padx=10, pady=10, sticky=tk.W)
+match_method_menu.bind('<<ComboboxSelected>>', update_method_menu)
+
 
 
 window.mainloop()
