@@ -90,7 +90,14 @@ def processing_functions():
     for i in range(0, 35):
         barnum.set(i)
         time.sleep(0.05)
-    non_tryp_peptides = output_files(processed_filepaths, process_data(listbox_entries)[0], process_data(listbox_entries)[1], output_directory)
+    try:
+        processed_dfs, unprocessed_dfs = process_data(listbox_entries)
+    except Exception as e:
+        messagebox.showerror("Error", f"An unexpected error occurred while reading the files {listbox_entries}: {str(e)}")
+        completion_label["text"] = "Process aborted. Please try again."
+        barnum.set(0)
+        return
+    non_tryp_peptides = output_files(processed_filepaths, processed_dfs, unprocessed_dfs, output_directory)
     for i in range(35, 50):
         barnum.set(i)
         time.sleep(0.05)
@@ -176,58 +183,88 @@ def protease_match():
 
     search_term = update_organism_menu().capitalize()
     method = update_method_menu()
+    # print(f'Species: {search_term}')
+    # print(f'Method: {method}')
     if tree is not None:
         tree.destroy()
-    tree = ttk.Treeview(second_tab, height=10)
+    table_frame = ttk.Frame(second_tab)
+    table_frame.grid(row=5, column=0, padx=(10,0), sticky=tk.NSEW) 
+    tree = ttk.Treeview(table_frame, height=10)
     tree['show'] = 'headings'
-
+    
 
     if method == 'Exact Match':
-        exact_matches = exact_match(search_term, substrate_df, termini_list, output_directory)
-        # Clear previous data in the treeview
-        for i in tree.get_children():
-            tree.delete(i)
-        columns = list(exact_matches.columns)
-    # Create the columns in the tree widget.
-        tree["columns"] = columns
-        for column in columns:
-            tree.column(column, width=100, stretch=tk.NO, anchor=tk.CENTER)
-            tree.heading(column, text=column)
-        # Add the DataFrame data to the tree widget.
-        for index, row in exact_matches.iterrows():
-            tree.insert('', 'end', values=list(row))
-        # return exact_matches
+        # try:
+            exact_matches = exact_match(search_term, substrate_df, termini_list, output_directory)
+            matches_count = len(exact_matches)
+            # Clear previous data in the treeview
+            for i in tree.get_children():
+                tree.delete(i)
+            columns = list(exact_matches.columns)
+        # Create the columns in the tree widget.
+            tree["columns"] = columns
+            for column in columns:
+                tree.column(column, width=115, stretch=False, anchor=tk.CENTER)
+                tree.heading(column, text=column)
+            # Add the data to the tree table
+            for index, row in exact_matches.iterrows():
+                tree.insert('', 'end', values=list(row))
+            # return exact_matches
+        # except Exception as e:
+        #     messagebox.showerror("Error", f"An unexpected error occurred while attempting to match termini to cleavage sites.")
+        #     return
+    
 
     elif method == 'Fuzzy Match':
-        fuzzy_matches = fuzzy_match(search_term, substrate_df, termini_list, output_directory)
-        for i in tree.get_children():
-            tree.delete(i)
-        columns = list(fuzzy_matches.columns)
-    # Create the columns in the tree widget.
-        tree["columns"] = columns
-        for column in columns:
-            tree.column(column, width=10)
-            tree.heading(column, text=column)
-        # Add the DataFrame data to the tree widget.
-        for index, row in fuzzy_matches.iterrows():
-            tree.insert('', 'end', values=list(row))
+        # try:
+            fuzzy_matches = fuzzy_match(search_term, substrate_df, termini_list, output_directory)
+            matches_count = len(fuzzy_matches)
+            for i in tree.get_children():
+                tree.delete(i)
+            columns = list(fuzzy_matches.columns)
+        # Create the columns in the tree widget.
+            tree["columns"] = columns
+            for column in columns:
+                tree.column(column, width=115, stretch=False, anchor=tk.CENTER)
+                tree.heading(column, text=column)
+            # Add the DataFrame data to the tree widget.
+            for index, row in fuzzy_matches.iterrows():
+                tree.insert('', 'end', values=list(row))
+        #     return fuzzy_matches
+        # except Exception as e:
+        #     messagebox.showerror("Error", f"An unexpected error occurred while attempting to match termini to cleavage sites.")
+        #     return
     
+
+    scrollbar_x = ttk.Scrollbar(table_frame, orient=tk.HORIZONTAL)
+    scrollbar_x.config(command=tree.xview)
+    scrollbar_x.grid(row=6, sticky=tk.EW)
+    tree.config(xscrollcommand=scrollbar_x.set)
+
+    scrollbar_y = ttk.Scrollbar(table_frame, orient=tk.VERTICAL)
+    scrollbar_y.config(command=tree.yview)
+    scrollbar_y.grid(row=5, column=2, sticky=tk.NS)
+    tree.config(yscrollcommand=scrollbar_y.set)
+
+    tree.grid(row=5, sticky=tk.EW)
     
-    tree.grid(row=5)
     second_tab.grid_rowconfigure(5, weight=1)
     second_tab.grid_columnconfigure(0, weight=1)
+
+    table_label["text"] = f"Found {matches_count} matches using {method}."
 
     def on_resize(event):
         # Calculate the total treeview width
         width = event.width
-        n = len(tree["columns"]) + 1  # include identifier column as well
+        n = len(tree["columns"])   # include identifier column as well
         # Set each column's width to the total width divided by the number of columns
         for column in tree["columns"]:
             tree.column(column, width=width//n)
     second_tab.bind('<Configure>', on_resize)
 
 
-    # Get column names from the DataFrame.
+
+
 
 
 
@@ -239,8 +276,8 @@ def protease_match():
 ######################
 window = tk.Tk()
 window.title("Non-Tryptic Peptide Extractor")
-window.geometry("1000x800")
-window.resizable(width=False, height=False)
+window.geometry("800x700")
+window.resizable(width=True, height=False)
 
 
 # Style configuration of widgets
@@ -353,6 +390,8 @@ match_method_menu = ttk.Combobox(menu_frame, textvariable=method_var, width=30, 
 match_method_menu.grid(row=3, column=1, padx=10, pady=10, sticky=tk.W)
 match_method_menu.bind('<<ComboboxSelected>>', update_method_menu)
 
+table_label = tk.Label(second_tab, text = "", fg='#007fff', font=("TkDefaultFont", 11, "bold"), justify=tk.LEFT)
+table_label.grid(row=6, column=0, padx=10, sticky=tk.W)
 
 
 window.mainloop()

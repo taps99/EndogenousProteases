@@ -77,13 +77,28 @@ def substrate_processing(path):
 def exact_match(organism, substrate_df, termini, output_directory):
     substrate_subsites_filtered = substrate_df[substrate_df['organism'] == organism].reset_index(drop=True)
     matches = substrate_subsites_filtered[substrate_subsites_filtered['Cleavage Site'].isin(termini['Non-Tryptic Termini'])]
+    matches = matches.drop(['Site_P4', 'Site_P3', 'Site_P2', 'Site_P1', 'Site_P1prime', 'Site_P2prime','Site_P3prime', 'Site_P4prime'], axis=1)
+    # print(matches)
+    temp_termini = termini.set_index('Non-Tryptic Termini') # set 'Non-Tryptic Termini' as index
+    # print(temp_termini)  
+    if len(matches) > 0:
+        matches['Non-Tryptic Termini'] = matches['Cleavage Site']
+        matches['Protein'] = matches['Non-Tryptic Termini'].map(temp_termini['Protein'])
+        matches['Protein ID'] = matches['Non-Tryptic Termini'].map(temp_termini['Protein ID'])
+        matches = matches.rename(columns={'cleavage_type': 'Cleavage Type', 'organism': 'Organism', 'Substrate_name': 'MEROPS Substrate'})
+        matches = matches[['Non-Tryptic Termini', 'Protein', 'Protein ID', 'Cleavage Site', 'MEROPS Substrate', 'Protease', 'Cleavage Type',  'Organism']]
+        # matches['Protein'] = matches['Cleavage Site'].map(termini.set_index('Non-Tryptic Termini')['Protein'])
+        # matches['Protein ID'] = matches['Cleavage Site'].map(termini.set_index('Non-Tryptic Termini')['Protein ID'])
+    else:
+        matches = pd.DataFrame(columns=['Non-Tryptic Termini', 'Protein', 'Protein ID', 'Cleavage Site', 'MEROPS Substrate', 'Protease', 'Cleavage Type',  'Organism'])
+    
     # print(matches)
     matches.to_csv(f'{output_directory}/exact_matches.csv', index=False)
     return matches
 
 # organisms, substrate_subsites = substrate_processing('./substrate.csv')
-# termini = pd.read_csv('./test2_output/non_tryp_termini.csv')
-# print(exact_match('Homo sapiens', substrate_subsites,termini))
+# termini = pd.read_csv('./Good_Output/non-tryp_termini.csv')
+# exact_match('Klebsiella pneumoniae', substrate_subsites,termini,'.')
 
 
 
@@ -111,13 +126,13 @@ def fuzzy_match(organism, substrate_df, termini, output_directory):
 
     for i, terminus in enumerate(input_termini):
         for _, (j, cleave_site) in tree.find((None, terminus), 2):  # Find matches -> set Levenshtein distance to 2
-            matches.append((terminus, termini.loc[i,'Protein'], termini.loc[i,'Protein ID'], cleave_site, substrate_subsites_filtered.loc[j,'Protease'], substrate_subsites_filtered.loc[j, 'organism']))
-            print(matches)
+            matches.append((terminus, termini.loc[i,'Protein'], termini.loc[i,'Protein ID'], cleave_site, substrate_subsites_filtered.loc[j, 'Substrate_name'], substrate_subsites_filtered.loc[j,'Protease'], substrate_subsites_filtered.loc[j,'cleavage_type'],substrate_subsites_filtered.loc[j, 'organism']))
 
-    matches_df = pd.DataFrame(matches, columns=['Non-Tryptic Termini', 'Protein', 'Protein ID', 'Cleavage Site', 'Protease',  'Organism'])
+
+    matches_df = pd.DataFrame(matches, columns=['Non-Tryptic Termini', 'Protein', 'Protein ID', 'Cleavage Site', 'MEROPS Substrate', 'Protease', 'Cleavage Type',  'Organism'])
     matches_df.to_csv(f'{output_directory}/fuzzy_matches.csv', index=False)
     return matches_df
 
 # organisms, substrate_subsites = substrate_processing('./substrate.csv')
 # termini = pd.read_csv('./test2_output/non_tryp_termini.csv')
-# fuzzy_match("Escherichia coli", substrate_subsites, termini)
+# fuzzy_match("Escherichia coli", substrate_subsites, termini, '.')

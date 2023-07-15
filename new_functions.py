@@ -12,14 +12,10 @@ def process_data(listbox_entries):
     processed_dfs = []
     count = 0
 
-    # for i, listbox_entry in enumerate(file_listbox.get(0, tk.END)):
-        # for entry in listbox_entries:
-        # Read the TSV file
     for entry in listbox_entries:
         df = pd.read_csv(entry, delimiter='\t', low_memory=False)
         unprocessed_dfs.append(df)
 
-        # Data transformations
         condition1 = ~(df['Peptide'].str.endswith('K') | df['Peptide'].str.endswith('R') & df['Prev AA'].isin(['K', 'R']))
         condition2 = ~(df['Prev AA'].isin(['K', 'R']) & df['Next AA'].isin(['-']))
         condition3 = ~(df['Prev AA'].isin(['-']) & (df['Peptide'].str.endswith('K') | df['Peptide'].str.endswith('R')))
@@ -68,17 +64,14 @@ def output_files(processed_filepaths, processed_dfs, unprocessed_dfs, output_dir
         unique_peptides = df.drop_duplicates(subset=['Peptide:Protein'])
         unique_peptide_dfs.append(unique_peptides) 
 
-
     combined_peptide_df = pd.concat(unique_peptide_dfs) # CONCAT THE UNIQUE PEPTIDES FROM EACH SAMPLE INTO ONE LARGE DF
     # master_df = combined_df_final['Peptide:Protein'].unique() # THEN ONLY KEEP UNIQUE ONES, WHICH MEANS THIS ONE CONTAINS ALL UNIQUE PEPTIDES FROM ALL SAMPLES
     peptide_df = combined_peptide_df.drop_duplicates(subset=['Peptide:Protein'])
     master_peptide_df = pd.DataFrame(peptide_df, columns=['Peptide:Protein', 'Tryptic State', 'Protein ID', 'Prev AA', 'Next AA']) # DF that contains all unique peptides across all samples
 
-
     split_data = master_peptide_df['Peptide:Protein'].str.split(':', n=1, expand=True)
     master_peptide_df['Peptide'] = split_data[0]
     master_peptide_df['Protein'] = split_data[1]
-
 
     for i, df in enumerate(processed_dict.values()):
         sample_name = list(processed_dict.keys())[i]
