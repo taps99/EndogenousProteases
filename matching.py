@@ -130,6 +130,7 @@ def fuzzy_match(organism, substrate_df, termini, output_directory):
 
 
     matches_df = pd.DataFrame(matches, columns=['Non-Tryptic Termini', 'Protein', 'Protein ID', 'Cleavage Site', 'MEROPS Substrate', 'Protease', 'Cleavage Type',  'Organism'])
+    matches_df = matches_df.drop_duplicates()
     matches_df.to_csv(f'{output_directory}/fuzzy_matches.csv', index=False)
     return matches_df
 

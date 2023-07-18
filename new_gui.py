@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog
 from tkinter import messagebox
+from tkinter import simpledialog
 import pandas as pd
 import os
 import sys
@@ -10,7 +11,7 @@ import threading
 import time
 from matching import substrate_processing, exact_match, fuzzy_match
 
-
+# def main():
 output_directory = ""
 organisms = []
 substrate_df = None
@@ -20,15 +21,20 @@ termini_list = None
 def browse_files():
     file_paths = filedialog.askopenfilenames(filetypes=[("TSV files", "*.tsv"), ("All files", "*.*")], multiple=True)
     for file_path in file_paths:
-        file_listbox.insert(tk.END, file_path)
-    
+        # file_listbox.insert(tk.END, file_path)
+        treeview.insert("", tk.END, values=(file_path, ""))
     switch_button_state()
 
 # Function to remove selected files from list
 def remove_files():
-    selected_files = file_listbox.curselection()
-    for index in selected_files[::-1]:
-        file_listbox.delete(index)
+    # selected_files = file_listbox.curselection()
+    # for index in selected_files[::-1]:
+    #     file_listbox.delete(index)
+    selected_files = treeview.selection()
+    for selected in selected_files:
+        treeview.delete(selected)
+    switch_button_state()
+
 
 # Function to select the directory that the output files should be output to
 def select_output_directory():
@@ -36,6 +42,8 @@ def select_output_directory():
     output_directory = filedialog.askdirectory()
     if len(str(output_directory)) > 0:
         output_directory_label["text"] = f"Output directory: {output_directory}"
+    else: 
+        output_directory_label["text"] = f"No output directory selected."
     os.makedirs(output_directory, exist_ok=True)
     switch_button_state()
     return output_directory
@@ -46,39 +54,66 @@ def setup():
     processed_filepaths = []
     listbox_entries = []
 
-    for i, listbox_entry in enumerate(file_listbox.get(0, tk.END)):
-        file_path = file_listbox.get(i)
-        listbox_entries.append(listbox_entry)
-        directory_name = os.path.basename(os.path.dirname(file_path))
-        # file_name_without_ext = os.path.splitext(os.path.basename(file_path))[0]
-        # output_file_name = f"{file_name_without_ext}_output_{directory_name}.tsv"
-        sample_name = directory_name.split('.')[0]
-        processed_filepaths.append(sample_name)
-    
-    return processed_filepaths, listbox_entries
+    group_counts = {} 
+    for value in treeview.get_children():
+        file_path, group = treeview.item(value, "values")
+        listbox_entries.append(file_path)
+        # if not group:  
+        #     messagebox.showerror("Error", "Please select a group for input files.")
+        #     return None, None
+        # Check if the group is already in group_counts
+        if group in group_counts:
+            # If so, increment the count and update the group name with the new count
+            group_counts[group] += 1
+            group = f"{group}_{group_counts[group]}"
+        else:
+            # If not, add it to dictionary with a count of 1 (indicating the first item)
+            group_counts[group] = 1
+            group = f"{group}_1"  # Append "_1" to the first item of each group
+        processed_filepaths.append(group)
+
+    return processed_filepaths, listbox_entries 
+
+def group_files():
+
+    if len(treeview.selection()) > 0:
+        group_name = simpledialog.askstring("Input", "Enter the group name:")
+        if group_name:
+            selected_items = treeview.selection()
+            for item in selected_items:
+                file_path, _ = treeview.item(item, "values")
+                treeview.item(item, values=(file_path, group_name))
+    else:
+        messagebox.showerror("Error", "No files were selected.")
+
 
 # This gets executed when you click 'Process' button
 def process_files_button():
     completion_label["text"] = ""
     output_files_label["text"] = ""
 
-    if not file_listbox.get(0, tk.END):
+    if not treeview.get_children():
         messagebox.showerror("Error", "Please select input files before processing.")
         completion_label["text"] = f"Please select a file to process."
         return
     if not output_directory:
         messagebox.showerror("Error", "Please select output directory before processing.")
+        completion_label["text"] = f"Please select an output directory."
         return
-
+    ungrouped_files = [item for item in treeview.get_children() if not treeview.item(item, "values")[1]]
+    if ungrouped_files:
+        proceed = messagebox.askyesno("Warning", "Presence/Absence data will not be generated for ungrouped files. Would you like to proceed anyway?")
+        if not proceed:
+            return
     process_thread = threading.Thread(target=processing_functions)
     process_thread.start()
 
 def switch_button_state():
-    if file_listbox.size() > 0 and output_directory:
-        process_button['state'] = tk.NORMAL
+    # if file_listbox.size() > 0 and output_directory:
+    if len(treeview.get_children()) > 0 and output_directory:
         process_button['style'] = 'Accent.TButton'
-    # else:
-    #     process_button['state'] = tk.DISABLED
+    else:
+        process_button['style'] = 'TButton'
 
 def processing_functions():
     global organisms
@@ -97,7 +132,13 @@ def processing_functions():
         completion_label["text"] = "Process aborted. Please try again."
         barnum.set(0)
         return
-    non_tryp_peptides = output_files(processed_filepaths, processed_dfs, unprocessed_dfs, output_directory)
+    try:
+        non_tryp_peptides = output_files(processed_filepaths, processed_dfs, unprocessed_dfs, output_directory)
+    except Exception as e:
+        messagebox.showerror("Error", f"An unexpected error occurred while generating the output files: {str(e)}")
+        completion_label["text"] = "Process aborted. Please try again."
+        barnum.set(0)
+        return
     for i in range(35, 50):
         barnum.set(i)
         time.sleep(0.05)
@@ -105,7 +146,13 @@ def processing_functions():
     for i in range(50, 81):
         barnum.set(i)
         time.sleep(0.05)
-    termini_list = create_termini_list(peptide_seq_match(get_protein_sequence(non_tryp_peptides), output_directory), output_directory)
+    try:
+        termini_list = create_termini_list(peptide_seq_match(get_protein_sequence(non_tryp_peptides), output_directory), output_directory)
+    except Exception as e:
+        messagebox.showerror("Error", f"An unexpected error occurred while acquiring sequences from UniProt: {str(e)}")
+        completion_label["text"] = "Process aborted. Please try again."
+        barnum.set(0)
+        return
     completion_label["text"] = "Finalizing..."
 
     # Check if the application is running as a script or a packaged application
@@ -115,12 +162,11 @@ def processing_functions():
     else:
     # The application is running as a script
         application_path = os.path.dirname(os.path.abspath(__file__))
-
     substrate_path = os.path.join(application_path, 'substrate.csv')
     organisms, substrate_df = substrate_processing(substrate_path)
     window.after(0, update_organism_menu, organisms)
 
-    
+
     for i in range(80, 101):
         barnum.set(i)
         time.sleep(0.05)
@@ -131,7 +177,8 @@ def processing_functions():
     else:
         completion_label["text"] = f"Successfully processed {count} files."
 
-    output_filepaths = [f'{output_directory}/all_peptides.csv', f'{output_directory}/all_unique_proteins.csv', f'{output_directory}/non-tryp_pept_sequences.csv', f'{output_directory}/non-tryptic_unique_proteins.csv', f'{output_directory}/non-tryp_termini.csv']
+    output_filepaths = [f'{output_directory}/all_peptides.csv', f'{output_directory}/all_non_tryptic_peptides.csv', f'{output_directory}/all_unique_proteins.csv', f'{output_directory}/non-tryp_pept_sequences.csv', f'{output_directory}/non-tryptic_unique_proteins.csv', f'{output_directory}/non-tryp_termini.csv']
+    # output_filepaths = [os.path.join(output_directory,f) for (dirpath, dirnames, filenames) in os.walk(output_directory) for f in filenames]
     # for dirpath, dirnames, filenames in os.walk(output_directory):
     #     for filename in filenames:
     #         output_filepaths.append(os.path.join(dirpath, filename))
@@ -189,8 +236,10 @@ def protease_match():
         tree.destroy()
     table_frame = ttk.Frame(second_tab)
     table_frame.grid(row=5, column=0, padx=(10,0), sticky=tk.NSEW) 
+    table_frame.grid_rowconfigure(0, weight=1)  # Add this line
+    table_frame.grid_columnconfigure(0, weight=1)  # Add this line
     tree = ttk.Treeview(table_frame, height=10)
-    tree['show'] = 'headings'
+    
     
 
     if method == 'Exact Match':
@@ -204,7 +253,7 @@ def protease_match():
         # Create the columns in the tree widget.
             tree["columns"] = columns
             for column in columns:
-                tree.column(column, width=115, stretch=False, anchor=tk.CENTER)
+                tree.column(column, stretch=False, anchor=tk.CENTER, width=125)
                 tree.heading(column, text=column)
             # Add the data to the tree table
             for index, row in exact_matches.iterrows():
@@ -225,7 +274,7 @@ def protease_match():
         # Create the columns in the tree widget.
             tree["columns"] = columns
             for column in columns:
-                tree.column(column, width=115, stretch=False, anchor=tk.CENTER)
+                tree.column(column, stretch=False, anchor=tk.CENTER, width=125)
                 tree.heading(column, text=column)
             # Add the DataFrame data to the tree widget.
             for index, row in fuzzy_matches.iterrows():
@@ -244,23 +293,24 @@ def protease_match():
     scrollbar_y = ttk.Scrollbar(table_frame, orient=tk.VERTICAL)
     scrollbar_y.config(command=tree.yview)
     scrollbar_y.grid(row=5, column=2, sticky=tk.NS)
-    tree.config(yscrollcommand=scrollbar_y.set)
-
-    tree.grid(row=5, sticky=tk.EW)
+    tree.config(yscrollcommand=scrollbar_y.set) 
+    tree.config(selectmode="extended")
+    tree.grid(row=5, sticky=tk.NSEW)
     
-    second_tab.grid_rowconfigure(5, weight=1)
-    second_tab.grid_columnconfigure(0, weight=1)
-
+    # second_tab.grid_rowconfigure(5, weight=1)
+    # second_tab.grid_columnconfigure(0, weight=1)
+    tree['show'] = 'headings'
     table_label["text"] = f"Found {matches_count} matches using {method}."
 
-    def on_resize(event):
-        # Calculate the total treeview width
-        width = event.width
-        n = len(tree["columns"])   # include identifier column as well
-        # Set each column's width to the total width divided by the number of columns
-        for column in tree["columns"]:
-            tree.column(column, width=width//n)
-    second_tab.bind('<Configure>', on_resize)
+    # def on_resize(event):
+    #     # Calculate the total treeview width
+    #     # width = event.width
+    #     width = second_tab.winfo_width()
+    #     n = len(tree["columns"])   # include identifier column as well
+    #     # Set each column's width to the total width divided by the number of columns
+    #     for column in tree["columns"]:
+    #         tree.column(column, width=width//n)
+    # second_tab.bind('<Configure>', on_resize)
 
 
 
@@ -276,7 +326,7 @@ def protease_match():
 ######################
 window = tk.Tk()
 window.title("Non-Tryptic Peptide Extractor")
-window.geometry("800x700")
+window.geometry("1000x700")
 window.resizable(width=True, height=False)
 
 
@@ -316,7 +366,7 @@ remove_button = ttk.Button(frame_browse, text="Remove Selected", command=remove_
 remove_button.grid(row=2, column=1, pady=10, padx=10, sticky=tk.W)
 
 frame_process = ttk.Frame(main_tab)
-process_button = ttk.Button(main_tab, text="Process", command=process_files_button, state=tk.DISABLED)
+process_button = ttk.Button(main_tab, text="Process", command=process_files_button, state=tk.NORMAL)
 process_button.grid(row=4, column=0, pady=10, padx=10, sticky=tk.W)
 
 listbox_label = tk.Label(main_tab, text="List of selected PSM files:")
@@ -324,12 +374,12 @@ listbox_label.grid(row=0, column=0, pady=10, padx=10, sticky=tk.W)
 
 listbox_frame = tk.Frame(main_tab)
 listbox_frame.grid(row=1, column=0, columnspan=2, sticky=tk.W)
-file_listbox = tk.Listbox(listbox_frame, selectmode=tk.MULTIPLE, width=100, height=7, highlightbackground="#008BFF")
-file_listbox.grid(row=1, column=0, columnspan=2, padx=(10,0), sticky=tk.W)
-scrollbar = ttk.Scrollbar(listbox_frame, orient="vertical")
-scrollbar.config(command=file_listbox.yview)
-scrollbar.grid(row=1, column=2, sticky=tk.NS)
-file_listbox.config(yscrollcommand=scrollbar.set)
+# file_listbox = tk.Listbox(listbox_frame, selectmode=tk.MULTIPLE, width=100, height=7, highlightbackground="#008BFF")
+# file_listbox.grid(row=1, column=0, columnspan=2, padx=(10,0), sticky=tk.W)
+# scrollbar = ttk.Scrollbar(listbox_frame, orient="vertical")
+# scrollbar.config(command=file_listbox.yview)
+# scrollbar.grid(row=1, column=2, sticky=tk.NS)
+# file_listbox.config(yscrollcommand=scrollbar.set)
 
 completion_label = tk.Label(main_tab, text="", fg='#007fff', font=("TkDefaultFont", 11, "bold"), justify= tk.LEFT)
 completion_label.grid(row=9, column=0, pady=10, padx=5, sticky=tk.W)
@@ -353,8 +403,35 @@ barnum = tk.IntVar()
 loading_bar = ttk.Progressbar(main_tab, orient='horizontal', mode='determinate', length=200, variable=barnum, maximum=100.0)
 loading_bar.grid(row=8, column=0, pady=10, padx=10, sticky=tk.W)
 
+group_button = ttk.Button(frame_browse, text="Group Files", command=group_files, style='Accent.TButton')
+group_button.grid(row=2, column=2, pady=10, padx=10, sticky=tk.W)
+
+# group_mutant_button = ttk.Button(main_tab, text="Group as Mutant", command=group_as_mutant, style='Accent.TButton')
+# group_mutant_button.grid(row=4, column=1, pady=10, padx=10, sticky=tk.W)
+
+# group_listbox = tk.Listbox(listbox_frame, selectmode=tk.MULTIPLE, width=100, height=7)
+# group_listbox.grid(row=2, column=0, columnspan=2, padx=(10,0), pady=10, sticky=tk.W)
+# Initialize the treeview
+treeview = ttk.Treeview(listbox_frame, columns=("File Path", "Group"), show="headings", height=5)
+treeview.heading("File Path", text="File Path")
+treeview.heading("Group", text="Group")
+treeview.column("File Path", width=600)
+treeview.column("Group", width=75, anchor=tk.CENTER)
+
+treeview.grid(row=1, column=0, padx=(10,0), sticky=tk.W)
+
+# Add scrollbar
+scrollbar = ttk.Scrollbar(listbox_frame, orient="vertical")
+scrollbar.config(command=treeview.yview)
+scrollbar.grid(row=1, column=2, sticky=tk.NS)
+treeview.config(yscrollcommand=scrollbar.set)
+
+# scrollbar = ttk.Scrollbar(listbox_frame, orient="vertical")
+# scrollbar.config(command=file_listbox.yview)
+# scrollbar.grid(row=1, column=2, sticky=tk.NS)
 
 
+###############################
 #### Protease Matching Tab ####
 second_tab = tk.Frame(notebook, width=1200, height=1600, highlightthickness=0)
 second_tab.grid()
@@ -397,7 +474,8 @@ table_label.grid(row=6, column=0, padx=10, sticky=tk.W)
 window.mainloop()
 
 
-
+# if __name__ == '__main__':
+#     main()
 
 ###############################
 

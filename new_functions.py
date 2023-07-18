@@ -50,13 +50,16 @@ def output_files(processed_filepaths, processed_dfs, unprocessed_dfs, output_dir
 
     # This is to get the unique proteins from the entire dataset (includes tryptic and non-tryptic)
     combined_df_subset = combined_df[['Peptide:Protein', 'Peptide', 'Prev AA', 'Next AA', 'Protein Description', 'Protein ID']].drop_duplicates(subset='Protein ID')
+    
     for i, df in enumerate(unprocessed_dict.values()):
         sample_name = list(unprocessed_dict.keys())[i]
-        for protein in combined_df_subset:
-            combined_df_subset[sample_name] = combined_df_subset['Protein ID'].isin(df['Protein ID']).astype(int)
+        if len(sample_name) > 2:
+            for protein in combined_df_subset:
+                combined_df_subset[sample_name] = combined_df_subset['Protein ID'].isin(df['Protein ID']).astype(int)
 
     combined_df_subset.to_csv(os.path.join(output_directory, 'all_unique_proteins.csv'), index=False)
 
+           
 
     # This part involves the actual output of non-tryptic peptides + relevant information
     unique_peptide_dfs=[]
@@ -65,23 +68,30 @@ def output_files(processed_filepaths, processed_dfs, unprocessed_dfs, output_dir
         unique_peptide_dfs.append(unique_peptides) 
 
     combined_peptide_df = pd.concat(unique_peptide_dfs) # CONCAT THE UNIQUE PEPTIDES FROM EACH SAMPLE INTO ONE LARGE DF
-    # master_df = combined_df_final['Peptide:Protein'].unique() # THEN ONLY KEEP UNIQUE ONES, WHICH MEANS THIS ONE CONTAINS ALL UNIQUE PEPTIDES FROM ALL SAMPLES
+    # THEN ONLY KEEP UNIQUE ONES, WHICH MEANS THIS ONE CONTAINS ALL UNIQUE PEPTIDES FROM ALL SAMPLES
     peptide_df = combined_peptide_df.drop_duplicates(subset=['Peptide:Protein'])
-    master_peptide_df = pd.DataFrame(peptide_df, columns=['Peptide:Protein', 'Tryptic State', 'Protein ID', 'Prev AA', 'Next AA']) # DF that contains all unique peptides across all samples
+    # DF that contains all unique non-tryptic peptides across all samples
+    master_peptide_df = pd.DataFrame(peptide_df, columns=['Peptide:Protein', 'Tryptic State', 'Protein ID', 'Prev AA', 'Next AA']) 
+
+    # DF that contains all non-tryptic peptides across all samples (3963 non-tryptic peptides)
+    master_peptide_df_all = pd.DataFrame(combined_peptide_df, columns=['Peptide:Protein', 'Tryptic State', 'Protein ID', 'Prev AA', 'Next AA']) 
 
     split_data = master_peptide_df['Peptide:Protein'].str.split(':', n=1, expand=True)
     master_peptide_df['Peptide'] = split_data[0]
     master_peptide_df['Protein'] = split_data[1]
 
+    split_data_all = master_peptide_df_all['Peptide:Protein'].str.split(':', n=1, expand=True)
+    master_peptide_df_all['Peptide'] = split_data_all[0]
+    master_peptide_df_all['Protein'] = split_data_all[1]
+
     for i, df in enumerate(processed_dict.values()):
         sample_name = list(processed_dict.keys())[i]
-        for peptide in master_peptide_df:
+        if len(sample_name) > 2:
             master_peptide_df[sample_name] = master_peptide_df['Peptide:Protein'].isin(df['Peptide:Protein']).astype(int)
-    
-    # File that contains all non-tryptic peptides across samples
-    # master_peptide_df.to_csv('./non_tryptic_peptides.csv', index=False)
-    # master_peptide_df.to_csv(os.path.join(output_directory, 'non_tryptic_peptides.csv'), index=False)
+            master_peptide_df_all[sample_name] = master_peptide_df_all['Peptide:Protein'].isin(df['Peptide:Protein']).astype(int)
 
+    # File that contains all non-tryptic peptides across samples
+    master_peptide_df_all.to_csv(os.path.join(output_directory, 'all_non_tryptic_peptides.csv'), index=False)
 
 ############ Protein-level output ############ 
     # Drop duplicates based on protein column to get only one row per protein, presence still based on peptide associated with this protein
@@ -90,11 +100,7 @@ def output_files(processed_filepaths, processed_dfs, unprocessed_dfs, output_dir
 
     return master_peptide_df
 
-    # output_filepaths = [f'{output_directory}/all_peptides.csv', f'{output_directory}/all_unique_proteins.csv', f'{output_directory}/non_tryptic_peptides.csv', f'{output_directory}/non_tryptic_proteins.csv']
-    # for filepath in output_filepaths:
-    #     df = pd.read_csv(filepath, low_memory=False)
-    #     peptide_count = df['Peptide'].nunique() # Modify this line if your column name differs
-    #     output_listbox.insert(tk.END, f'File: {filepath}, Number of peptides: {peptide_count}')
+
 
 def fetch_sequence(peptide):
     url = f"https://www.uniprot.org/uniprot/{peptide}.fasta" 
@@ -211,31 +217,16 @@ def peptide_seq_match(df:pd.DataFrame, output_directory):
     df['N-terminal'] = df['Peptide'].map(n_terminal_dict)
     df['C-terminal'] = df['Peptide'].map(c_terminal_dict)
 
-    df.to_csv(f'{output_directory}/non-tryp_pept_sequences.csv', index=False)
+    df.to_csv(f'{output_directory}/non-tryptic_pept_sequences.csv', index=False)
     return df
 
     # nontryp_termini_only = nontryp_termini.dropna()
 
 def create_termini_list(df:pd.DataFrame, output_directory):
-    # nontryp_termini = pd.concat([df['N-terminal'], df['C-terminal']])
-    # nontryp_termini = pd.DataFrame(nontryp_termini, columns=['Non-Tryptic Termini'])
-    # nontryp_termini = nontryp_termini.dropna()
-
-    # for i, row in nontryp_termini.iterrows():
-    #     sites = row['Non-Tryptic Termini']
-    #     # if sites in df['C-terminal'].values:
-    #     if sites in pd.Series(df['C-terminal'].values):
-    #         nontryp_termini.at[i, 'Protein ID'] = df.loc[df['C-terminal'] == sites, 'Protein ID'].iloc[0]
-    #         nontryp_termini.at[i, 'Protein'] = df.loc[df['C-terminal'] == sites, 'Protein'].iloc[0]
-    #     # elif sites in df['N-terminal'].values:
-    #     elif sites in pd.Series(df['N-terminal'].values):
-    #         nontryp_termini.at[i, 'Protein ID'] = df.loc[df['N-terminal'] == sites, 'Protein ID'].iloc[0]
-    #         nontryp_termini.at[i, 'Protein'] = df.loc[df['N-terminal'] == sites, 'Protein'].iloc[0]
     nontryp_termini = pd.concat([df[['N-terminal', 'Protein ID', 'Protein']].rename(columns={'N-terminal': 'Non-Tryptic Termini'}),
                                  df[['C-terminal', 'Protein ID', 'Protein']].rename(columns={'C-terminal': 'Non-Tryptic Termini'})])
     nontryp_termini = nontryp_termini.dropna()
-
-    nontryp_termini.to_csv(f'{output_directory}/non-tryp_termini.csv', index=False)
+    nontryp_termini.to_csv(f'{output_directory}/non-tryptic_termini.csv', index=False)
     return nontryp_termini
 
 
