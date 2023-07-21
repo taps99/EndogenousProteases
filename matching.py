@@ -26,9 +26,8 @@ import Levenshtein
     # nontryp_termini = nontryp_termini.dropna()
     # nontryp_termini.to_csv('non_tryp_termini.csv', index=False)
 
+### Substrate table processing to clean substrate_search table from MEROPS and also get a list of organisms to be used in GUI
 def substrate_processing(path):
-
-    ### Substrate table processing
     amino_acid_dict = {
         'Ala': 'A',
         'Arg': 'R',
@@ -51,7 +50,6 @@ def substrate_processing(path):
         'Tyr': 'Y',
         'Val': 'V'
     }
-
     # current_dir = os.path.dirname(os.path.realpath(__file__))
     # csv_path = os.path.join(current_dir, 'substrate.csv')
     substrate_df = pd.read_csv(path)
@@ -69,12 +67,22 @@ def substrate_processing(path):
 
     # Organism list
     organisms = sorted(substrate_subsites['organism'].str.lstrip().str.capitalize().unique().tolist()) # 1417 unique organisms -> 1397 unique organisms
-    org = pd.Series(organisms)
-    # org.to_csv('organisms.csv', index=False, header=False)
+    organisms_series = pd.Series(organisms)
+    organisms_clean = organisms_series[~organisms_series.str.match('^\d')]
+    print(len(organisms_clean))
+    organisms_clean.to_csv('organisms_merops.csv', index=False, header=False)
+    substrate_subsites.to_csv('substrates_merops.csv', index=False)
     return organisms, substrate_subsites
+# substrate_processing('./substrate.csv')
+
+
+
+
+######## Matching functions ########
 
 # Exact matching
-def exact_match(organism, substrate_df, termini, output_directory):
+def exact_match(organism, substrate_df, termini_path, output_directory):
+    termini = pd.read_csv(termini_path)
     substrate_subsites_filtered = substrate_df[substrate_df['organism'] == organism].reset_index(drop=True)
     matches = substrate_subsites_filtered[substrate_subsites_filtered['Cleavage Site'].isin(termini['Non-Tryptic Termini'])]
     matches = matches.drop(['Site_P4', 'Site_P3', 'Site_P2', 'Site_P1', 'Site_P1prime', 'Site_P2prime','Site_P3prime', 'Site_P4prime'], axis=1)
@@ -104,7 +112,8 @@ def exact_match(organism, substrate_df, termini, output_directory):
 
 
 # Levenshtein distance fuzzy-matching
-def fuzzy_match(organism, substrate_df, termini, output_directory):
+def fuzzy_match(organism, substrate_df, termini_path, output_directory):
+    termini = pd.read_csv(termini_path)
     substrate_subsites_filtered = substrate_df[substrate_df['organism'] == organism].reset_index(drop=True)
     input_termini = termini['Non-Tryptic Termini']
     substrates = substrate_subsites_filtered['Cleavage Site']
