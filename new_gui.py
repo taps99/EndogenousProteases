@@ -14,6 +14,7 @@ from matching import exact_match, fuzzy_match
 
 def main():
     global substrate_df
+    global output_directory
     # Check if the application is running as a script or a packaged application
     if getattr(sys, 'frozen', False):
     # The application is running as a bundled executable
@@ -26,8 +27,11 @@ def main():
     substrate_df = pd.read_csv(substrate_path)
     organisms = pd.read_csv(organisms_path)
     organisms = organisms.iloc[:,0].tolist()
-    termini_list = None
-    # output_directory = None
+    global termini_file_path
+    global filtered_termini_file_path
+    termini_file_path = None
+    output_directory = None
+    filtered_termini_file_path = None
 
     # Function to open file explorer to select files to be processed
     def browse_files():
@@ -46,7 +50,6 @@ def main():
         for selected in selected_files:
             treeview.delete(selected)
         switch_button_state()
-
 
     # Function to select the directory that the output files should be output to
     def select_output_directory():
@@ -105,6 +108,7 @@ def main():
 
     # This gets executed when you click 'Process' button
     def process_files_button():
+        global process_thread
         completion_label["text"] = ""
         output_files_label["text"] = ""
 
@@ -121,9 +125,13 @@ def main():
             proceed = messagebox.askyesno("Warning", "The input files will be grouped by file name by default. Would you like to proceed?")
             if not proceed:
                 return
+
         process_thread = threading.Thread(target=processing_functions)
         process_thread.start()
 
+
+
+    
     def switch_button_state():
         # if file_listbox.size() > 0 and output_directory:
         if len(treeview.get_children()) > 0 and output_directory != "":
@@ -135,6 +143,7 @@ def main():
         # global organisms
         # global substrate_df
         global termini_list
+
         processed_filepaths = setup()[0]
         listbox_entries = setup()[1]
         completion_label["text"] = "Initializing extraction..."
@@ -181,7 +190,7 @@ def main():
         else:
             completion_label["text"] = f"Successfully processed {count} files."
 
-        output_filepaths = [f'{output_directory}/all_peptides.csv', f'{output_directory}/all_non_tryptic_peptides.csv', f'{output_directory}/all_unique_proteins.csv', f'{output_directory}/non-tryp_pept_sequences.csv', f'{output_directory}/non-tryptic_unique_proteins.csv', f'{output_directory}/non-tryp_termini.csv']
+        output_filepaths = [f'{output_directory}/all_peptides.csv', f'{output_directory}/all_non_tryptic_peptides.csv', f'{output_directory}/all_unique_proteins.csv', f'{output_directory}/non-tryptic_pept_sequences.csv', f'{output_directory}/non-tryptic_unique_proteins.csv', f'{output_directory}/non-tryp_termini.csv', f'{output_directory}/all_proteases.csv']
         # output_filepaths = [os.path.join(output_directory,f) for (dirpath, dirnames, filenames) in os.walk(output_directory) for f in filenames]
         # for dirpath, dirnames, filenames in os.walk(output_directory):
         #     for filename in filenames:
@@ -194,9 +203,10 @@ def main():
         # organism_menu["state"] = tk.NORMAL
         # protease_button["state"] = tk.NORMAL
         # protease_button["style"] = 'Accent.TButton'
+        grouping_button1["style"] = 'Accent.TButton'
         return termini_list
-    
-    # termini_file_path = ""
+
+
     def select_termini_file():
         global termini_file_path
         termini_file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("All files", "*.*")], multiple=False)
@@ -208,9 +218,13 @@ def main():
 
     def open_groupfilter_window():
         global termini_file_path
+        global output_directory
         # global selected_option_dict
         # global group_name_list
         # if termini_file_path:
+        if not output_directory:
+            messagebox.showerror("Error", "Please select output directory before grouping.")
+            return
         try:
             df = pd.read_csv(termini_file_path) 
         except Exception as e:
@@ -221,23 +235,29 @@ def main():
             return
 
         groups = [] # list of tuples (group_name, column) -> (MUTANT, MUTANT_1), (MUTANT, MUTANT_2), etc.
-        for col in df.columns[1:]:
+        for col in df.columns[4:]:
             group_name = '_'.join(col.rsplit('_')[:-1])
             groups.append((group_name, col))
 
         new_window = tk.Toplevel(window)
-        new_window.geometry('700x500')
-        row_count = 0
+        new_window.geometry('500x500')
+        new_window.grid_columnconfigure(0, weight=1)  # Adds empty space on left
+        new_window.grid_columnconfigure(3, weight=1)  # Adds empty space on right
+        row_count = 1
+        check_frame = tk.Frame(new_window)
+        check_frame.grid(sticky=tk.NSEW)
 
-        def create_checkbutton(var, dropdown):
-            return lambda: toggle_dropdown(var, dropdown)
+        # group_label = ttk.Label(check_frame, text="Groups:")
+        # group_label.grid(row=0)
+
+        def create_checkbutton(var, dropdown1, dropdown2):
+            return lambda: toggle_dropdown(var, dropdown1, dropdown2)
         # grab first element of each tuple in the groups list and put them into a list
         unique_groups = list(set([x[0] for x in groups]))
         selected_option_dict = {}
         
         for group in unique_groups: # iterate through each unique group 
-            # check_frame = tk.Frame(new_window)
-            # check_frame.grid(sticky=tk.NS)
+            
             blah = tk.IntVar()
             options = [0] + [i for i in range(0, sum([1 for x in groups if x[0] == group]) + 1)]
             selected_option = tk.IntVar()
@@ -245,46 +265,63 @@ def main():
 
             dropdown = ttk.OptionMenu(new_window, selected_option, *options)
             dropdown.configure(state='disabled')
-            dropdown.grid(row=row_count, column=2, sticky=tk.W)
+            dropdown.grid(row=row_count, column=3, pady=(10,0), padx=(0,10), sticky=tk.W)
 
-            check = ttk.Checkbutton(new_window, text=group, variable=blah, onvalue=1, offvalue=0, command=create_checkbutton(blah, dropdown))
-            check.grid(row=row_count, column=1, sticky=tk.W)
+            comparator_options = ['Equal to', 'Less Than', 'More Than']
+            selected_comparator = tk.StringVar()  # create a StringVar for the comparator
+            selected_option_dict[group] = (selected_option, selected_comparator)  # store tuple of selected option and comparator
+
+            comparator_dropdown = ttk.OptionMenu(new_window, selected_comparator, comparator_options[0], *comparator_options)
+            comparator_dropdown.configure(state='disabled')
+            comparator_dropdown.grid(row=row_count, column=2, pady=(10,0), sticky=tk.W)  # adjust column index as needed
+
+            check = ttk.Checkbutton(new_window, text=group, variable=blah, onvalue=1, offvalue=0, command=create_checkbutton(blah, dropdown, comparator_dropdown))
+            check.grid(row=row_count, column=1, padx=(0,20), pady=(10,0), sticky=tk.W)
             row_count += 1  
         
-        def toggle_dropdown(var, dropdown):
+        def toggle_dropdown(var, dropdown1, dropdown2):
             if var.get() == 1: # if the checkbutton is selected
-                dropdown.configure(state='normal')
+                dropdown1.configure(state='normal')
+                dropdown2.configure(state='normal')
             else: # if the checkbutton is deselected
-                dropdown.configure(state='disabled')
+                dropdown1.configure(state='disabled')
+                dropdown2.configure(state='normal')
 
 
         # Function to apply the filter when the "Apply filter" button is clicked
         def apply_filter(): 
             # global selected_option_dict
+            global termini_file_path
+            global filtered_termini_file_path
             df = pd.read_csv(termini_file_path)
-            print(selected_option_dict)
-            print(len(df))
             masks = []
-            for group, option_var in selected_option_dict.items():  
-                # print(f"Group: {group}, Selected Option: {option_var.get()}")
+            for group, (option_var,comparator_var) in selected_option_dict.items():  
                 # find all columns belonging to each group 
-                # print(group_name)
                 columns_for_group = [col for group_name, col in groups if group_name == group]
-                # print(columns_for_group)
-                # print(option_var.get())
                 # then retain only rows where sum of the values in group's columns is >= to the number selected in dropdown menu for that group
-                mask = df[columns_for_group].sum(axis=1) >= option_var.get()
+                # mask = df[columns_for_group].sum(axis=1) >= option_var.get()
+                if comparator_var.get() == 'Equal to':
+                    mask = df[columns_for_group].sum(axis=1) == option_var.get()
+                elif comparator_var.get() == 'Less Than':
+                    mask = df[columns_for_group].sum(axis=1) < option_var.get()
+                elif comparator_var.get() == 'More Than':
+                    mask = df[columns_for_group].sum(axis=1) > option_var.get()
                 masks.append(mask)
             
             final_mask = np.logical_and.reduce(masks)
             df = df[final_mask]
             print(len(df))
-            df.to_csv(f'blah/filtered_termini_test.csv', index=False)
+            df.to_csv(f'{output_directory}/filtered_termini.csv', index=False)
+            filtered_termini_file_path = f'{output_directory}/filtered_termini.csv'
+            # termini_file_path = filtered_termini_file_path
+            new_window.destroy()
+            return termini_file_path
+        apply_frame = ttk.Frame(new_window)
+        apply_frame.grid(row=row_count+1)
         apply_button = ttk.Button(new_window, text="Apply Group Filter", command=lambda: apply_filter(), style="Accent.TButton")
-        apply_button.grid()
+        apply_button.grid(row=row_count+1, column=2, pady=(30,0), padx=(0,10), sticky=tk.W)
             
         
-
     def protease_match_button():
         search_term = update_organism_menu().capitalize()
         method = update_method_menu()
@@ -335,11 +372,13 @@ def main():
         table_frame.grid_columnconfigure(0, weight=1)  # Add this line
         tree = ttk.Treeview(table_frame, height=10)
         
-        
 
         if method == 'Exact Match':
             try:
-                exact_matches = exact_match(search_term, substrate_df, termini_file_path, output_directory)
+                if filtered_termini_file_path is not None:
+                    exact_matches = exact_match(search_term, substrate_df, filtered_termini_file_path, output_directory)
+                else:
+                    exact_matches = exact_match(search_term, substrate_df, termini_file_path, output_directory)
             except Exception as e:
                 messagebox.showerror("Error", f"An unexpected error occurred while attempting to match termini to cleavage sites: {str(e)}")
                 return
@@ -364,7 +403,10 @@ def main():
 
         elif method == 'Fuzzy Match':
             try:
-                fuzzy_matches = fuzzy_match(search_term, substrate_df, termini_file_path, output_directory)
+                if filtered_termini_file_path is not None:
+                    fuzzy_matches = fuzzy_match(search_term, substrate_df, filtered_termini_file_path, output_directory)
+                else:
+                    fuzzy_matches = fuzzy_match(search_term, substrate_df, termini_file_path, output_directory)
             except Exception as e:
                 messagebox.showerror("Error", f"An unexpected error occurred while attempting to match termini to cleavage sites: {str(e)}")
                 return
@@ -467,6 +509,9 @@ def main():
     frame_process = ttk.Frame(main_tab)
     process_button = ttk.Button(main_tab, text="Process", command=process_files_button, state=tk.NORMAL)
     process_button.grid(row=4, column=0, pady=10, padx=10, sticky=tk.W)
+
+    grouping_button1 = ttk.Button(main_tab, text="Grouping Filter", command=open_groupfilter_window, state=tk.NORMAL)
+    grouping_button1.grid(row=4, column=1, sticky=tk.W)
 
     listbox_label = tk.Label(main_tab, text="List of selected PSM files:")
     listbox_label.grid(row=0, column=0, pady=10, padx=10, sticky=tk.W)

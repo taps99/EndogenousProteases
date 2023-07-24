@@ -32,7 +32,7 @@ def process_data(listbox_entries):
         merged_df["Peptide:Protein"] = merged_df[['Peptide', 'Protein Description']].agg(':'.join, axis=1)
         merged_df_subset = merged_df[['Peptide:Protein', 'Tryptic State', 'Peptide', 'Prev AA', 'Next AA', 'Protein Description', 'Protein ID']]
         
-        processed_dfs.append(merged_df_subset)
+        processed_dfs.append(merged_df_subset) # List of dataframes containing non-tryptic peptides, where a dataframe represents one sample
     return processed_dfs, unprocessed_dfs
 
 
@@ -59,6 +59,8 @@ def output_files(processed_filepaths, processed_dfs, unprocessed_dfs, output_dir
 
     combined_df_subset.to_csv(os.path.join(output_directory, 'all_unique_proteins.csv'), index=False)
 
+    proteases = combined_df_subset[combined_df_subset['Protein Description'].str.contains(r'(?:protease|peptidase)')]
+    proteases.to_csv(os.path.join(output_directory, 'all_proteases.csv'), index=False)
            
 
     # This part involves the actual output of non-tryptic peptides + relevant information
@@ -67,9 +69,11 @@ def output_files(processed_filepaths, processed_dfs, unprocessed_dfs, output_dir
         unique_peptides = df.drop_duplicates(subset=['Peptide:Protein'])
         unique_peptide_dfs.append(unique_peptides) 
 
-    combined_peptide_df = pd.concat(unique_peptide_dfs) # CONCAT THE UNIQUE PEPTIDES FROM EACH SAMPLE INTO ONE LARGE DF
+    combined_peptide_df = pd.concat(unique_peptide_dfs) # CONCAT THE NON-TRYPTIC PEPTIDES FROM EACH SAMPLE INTO ONE LARGE DF
     # THEN ONLY KEEP UNIQUE ONES, WHICH MEANS THIS ONE CONTAINS ALL UNIQUE PEPTIDES FROM ALL SAMPLES
-    peptide_df = combined_peptide_df.drop_duplicates(subset=['Peptide:Protein'])
+    # print(len(combined_peptide_df))
+    peptide_df = combined_peptide_df.drop_duplicates(subset=['Peptide:Protein']) # Goes from 3963 to 1440 peptides for wt v mutant dataset
+    # print(len(peptide_df))
     # DF that contains all unique non-tryptic peptides across all samples
     master_peptide_df = pd.DataFrame(peptide_df, columns=['Peptide:Protein', 'Tryptic State', 'Protein ID', 'Prev AA', 'Next AA']) 
 
@@ -92,6 +96,12 @@ def output_files(processed_filepaths, processed_dfs, unprocessed_dfs, output_dir
 
     # File that contains all non-tryptic peptides across samples
     master_peptide_df_all.to_csv(os.path.join(output_directory, 'all_non_tryptic_peptides.csv'), index=False)
+    # Get counts of each protein associated with non-tryptic peptides (how many times a certain protein appears among the list of all non-tryptic peptides)
+    # Gives us qualitative insight on potential targets of endogenous proteolysis (if a certain protein has many occurrences of non-tryptic peptides = more likely target of endogenous proteolysis)
+    protein_counts = master_peptide_df_all['Protein ID'].value_counts()
+    print(protein_counts)
+    protein_counts.to_csv(os.path.join(output_directory, 'non-tryptic_protein_counts.csv'), index=False)
+
 
 ############ Protein-level output ############ 
     # Drop duplicates based on protein column to get only one row per protein, presence still based on peptide associated with this protein
@@ -108,7 +118,7 @@ def fetch_sequence(peptide):
     # Check if successful request and extract protein sequence 
     try:
     # if response.ok:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=15)
         response.raise_for_status()
         lines = response.text.strip().split("\n")
         protein_sequence = "".join(lines[1:])
@@ -228,8 +238,8 @@ def peptide_seq_match(df:pd.DataFrame, output_directory):
 def create_termini_list(df:pd.DataFrame, output_directory):
     df_subset = df.iloc[:, 10:]
     presence_cols = list(df_subset.columns.values)
-    df_N = df[['N-terminal'] + presence_cols].rename(columns={'N-terminal': 'Non-Tryptic Termini'})
-    df_C = df[['C-terminal'] + presence_cols].rename(columns={'C-terminal': 'Non-Tryptic Termini'})
+    df_N = df[['N-terminal', 'Protein', 'Protein ID', 'Tryptic State'] + presence_cols].rename(columns={'N-terminal': 'Non-Tryptic Termini'})
+    df_C = df[['C-terminal', 'Protein', 'Protein ID', 'Tryptic State'] + presence_cols].rename(columns={'C-terminal': 'Non-Tryptic Termini'})
 
 # Concatenate these two dataframes
     nontryp_termini = pd.concat([df_N, df_C])

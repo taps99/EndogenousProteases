@@ -86,9 +86,9 @@ def exact_match(organism, substrate_df, termini_path, output_directory):
     substrate_subsites_filtered = substrate_df[substrate_df['organism'] == organism].reset_index(drop=True)
     matches = substrate_subsites_filtered[substrate_subsites_filtered['Cleavage Site'].isin(termini['Non-Tryptic Termini'])]
     matches = matches.drop(['Site_P4', 'Site_P3', 'Site_P2', 'Site_P1', 'Site_P1prime', 'Site_P2prime','Site_P3prime', 'Site_P4prime'], axis=1)
-    # print(matches)
+    
     temp_termini = termini.set_index('Non-Tryptic Termini') # set 'Non-Tryptic Termini' as index
-    # print(temp_termini)  
+
     if len(matches) > 0:
         matches['Non-Tryptic Termini'] = matches['Cleavage Site']
         matches['Protein'] = matches['Non-Tryptic Termini'].map(temp_termini['Protein'])
