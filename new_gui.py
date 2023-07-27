@@ -158,7 +158,7 @@ def main():
             barnum.set(0)
             return
         try:
-            non_tryp_peptides = output_files(processed_filepaths, processed_dfs, unprocessed_dfs, output_directory)
+            non_tryp_peptides, all_non_tryp_peptides = output_files(processed_filepaths, processed_dfs, unprocessed_dfs, output_directory)
         except Exception as e:
             messagebox.showerror("Error", f"An unexpected error occurred while generating the output files: {str(e)}")
             completion_label["text"] = "Process aborted. Please try again."
@@ -172,13 +172,15 @@ def main():
             barnum.set(i)
             time.sleep(0.05)
         try:
-            peptide_df = peptide_seq_match(get_protein_sequence(non_tryp_peptides), output_directory)
+            peptide_df = peptide_seq_match(get_protein_sequence(non_tryp_peptides), "unique_non_tryp_sequences",output_directory)
+            all_peptide_df = peptide_seq_match(get_protein_sequence(all_non_tryp_peptides), "non_unique_non_tryp_sequences", output_directory)
         except Exception as e:
             messagebox.showerror("Error", f"An unexpected error occurred while acquiring sequences from UniProt: {str(e)}")
             completion_label["text"] = "Process aborted. Please try again."
             barnum.set(0)
             return
-        termini_list = create_termini_list(peptide_df,output_directory)
+        termini_list = create_termini_list(peptide_df,"unique_non_tryp", output_directory)
+        termini_list_all = create_termini_list(all_peptide_df, "non_unique_non_tryp", output_directory)
         completion_label["text"] = "Finalizing..."
         for i in range(80, 101):
             barnum.set(i)
@@ -203,8 +205,8 @@ def main():
         # organism_menu["state"] = tk.NORMAL
         # protease_button["state"] = tk.NORMAL
         # protease_button["style"] = 'Accent.TButton'
-        grouping_button1["style"] = 'Accent.TButton'
-        return termini_list
+        # grouping_button1["style"] = 'Accent.TButton'
+        return termini_list, termini_list_all
 
 
     def select_termini_file():
@@ -510,8 +512,8 @@ def main():
     process_button = ttk.Button(main_tab, text="Process", command=process_files_button, state=tk.NORMAL)
     process_button.grid(row=4, column=0, pady=10, padx=10, sticky=tk.W)
 
-    grouping_button1 = ttk.Button(main_tab, text="Grouping Filter", command=open_groupfilter_window, state=tk.NORMAL)
-    grouping_button1.grid(row=4, column=1, sticky=tk.W)
+    # grouping_button1 = ttk.Button(main_tab, text="Grouping Filter", command=open_groupfilter_window, state=tk.NORMAL)
+    # grouping_button1.grid(row=4, column=1, sticky=tk.W)
 
     listbox_label = tk.Label(main_tab, text="List of selected PSM files:")
     listbox_label.grid(row=0, column=0, pady=10, padx=10, sticky=tk.W)

@@ -93,22 +93,33 @@ def output_files(processed_filepaths, processed_dfs, unprocessed_dfs, output_dir
         # if len(sample_name) > 2:
         master_peptide_df[sample_name] = master_peptide_df['Peptide:Protein'].isin(df['Peptide:Protein']).astype(int)
         master_peptide_df_all[sample_name] = master_peptide_df_all['Peptide:Protein'].isin(df['Peptide:Protein']).astype(int)
+        
 
     # File that contains all non-tryptic peptides across samples
     master_peptide_df_all.to_csv(os.path.join(output_directory, 'all_non_tryptic_peptides.csv'), index=False)
     # Get counts of each protein associated with non-tryptic peptides (how many times a certain protein appears among the list of all non-tryptic peptides)
     # Gives us qualitative insight on potential targets of endogenous proteolysis (if a certain protein has many occurrences of non-tryptic peptides = more likely target of endogenous proteolysis)
-    protein_counts = master_peptide_df_all['Protein ID'].value_counts()
-    print(protein_counts)
-    protein_counts.to_csv(os.path.join(output_directory, 'non-tryptic_protein_counts.csv'), index=False)
+    # protein_counts = master_peptide_df_all['Protein ID'].value_counts()
+    # print(protein_counts)
+    # protein_counts.to_csv(os.path.join(output_directory, 'non-tryptic_protein_counts.csv'), index=False)
 
 
 ############ Protein-level output ############ 
     # Drop duplicates based on protein column to get only one row per protein, presence still based on peptide associated with this protein
-    proteins_df = master_peptide_df.drop_duplicates(subset=['Protein ID'])
-    proteins_df.to_csv(os.path.join(output_directory, 'non-tryptic_unique_proteins.csv'), index=False)
+    # uniqueproteins_df = master_peptide_df.drop_duplicates(subset=['Protein ID'])
+    # uniqueproteins_df.to_csv(os.path.join(output_directory, 'non-tryptic_unique_peptproteins.csv'), index=False)
+    proteins_df = pd.DataFrame(peptide_df, columns=['Peptide:Protein', 'Tryptic State', 'Protein ID', 'Prev AA', 'Next AA'])
+    split_data_proteins = proteins_df['Peptide:Protein'].str.split(':', n=1, expand=True)
+    proteins_df['Peptide'] = split_data_proteins[0]
+    proteins_df['Protein'] = split_data_proteins[1]
 
-    return master_peptide_df
+    for i, df in enumerate(processed_dict.values()):
+        sample_name = list(processed_dict.keys())[i]
+        proteins_df[sample_name] = proteins_df['Protein ID'].isin(df['Protein ID']).astype(int)
+
+    proteins_df.drop_duplicates(subset=['Protein ID'],inplace=True)
+    proteins_df.to_csv(os.path.join(output_directory, 'non-tryptic_unique_proteins.csv'), index=False)
+    return master_peptide_df, master_peptide_df_all
 
 
 
@@ -160,7 +171,7 @@ def get_protein_sequence(peptide_df):
         return peptide_df
 
 
-def peptide_seq_match(df:pd.DataFrame, output_directory):
+def peptide_seq_match(df:pd.DataFrame, name, output_directory):
     # match peptide with protein sequence using re 
     peptide = df['Peptide'].astype(str)
     prev_AA = df['Prev AA'].astype(str)
@@ -201,7 +212,7 @@ def peptide_seq_match(df:pd.DataFrame, output_directory):
                     n_terminal_dict[peptide] = n_terminal
                     c_terminal_dict[peptide] = pd.NA
 
-    # # Add dashes to the end of sequences that are less than 10 aa long for N-terminal cleavages
+    # # Add dashes to the end of sequences that are less than 8 aa long for N-terminal cleavages
     for peptide in n_terminal_dict:
         string = n_terminal_dict[peptide]
         if pd.isna(string):
@@ -212,7 +223,7 @@ def peptide_seq_match(df:pd.DataFrame, output_directory):
             else:
                 string = "-" + string
         n_terminal_dict[peptide] = string
-    # # Add dashes to beginning of sequences that are less than 10 aa long for C-terminal cleavages
+    # # Add dashes to beginning of sequences that are less than 8 aa long for C-terminal cleavages
     for peptide in c_terminal_dict:
         string = c_terminal_dict[peptide]
         if pd.isna(string):
@@ -226,16 +237,18 @@ def peptide_seq_match(df:pd.DataFrame, output_directory):
                 
     df['N-terminal'] = df['Peptide'].map(n_terminal_dict)
     df['C-terminal'] = df['Peptide'].map(c_terminal_dict)
-
+    df['N-terminal'] = df['N-terminal'].fillna('')
+    df = df[~df['N-terminal'].str.startswith('---M')]
+    df['N-terminal'] = df['N-terminal'].replace('', np.nan)
     important_cols = ['Peptide:Protein','Tryptic State','Protein ID','Prev AA','Next AA','Peptide','Protein','Protein Sequence','N-terminal','C-terminal']
     new_cols = important_cols + (df.columns.drop(important_cols).tolist())
     df = df[new_cols]
-    df.to_csv(f'{output_directory}/non-tryptic_pept_sequences.csv', index=False)
+    df.to_csv(f'{output_directory}/{name}.csv', index=False)
     return df
 
     # nontryp_termini_only = nontryp_termini.dropna()
 
-def create_termini_list(df:pd.DataFrame, output_directory):
+def create_termini_list(df:pd.DataFrame, name, output_directory):
     df_subset = df.iloc[:, 10:]
     presence_cols = list(df_subset.columns.values)
     df_N = df[['N-terminal', 'Protein', 'Protein ID', 'Tryptic State'] + presence_cols].rename(columns={'N-terminal': 'Non-Tryptic Termini'})
@@ -248,7 +261,7 @@ def create_termini_list(df:pd.DataFrame, output_directory):
     # nontryp_termini = pd.concat([df[['N-terminal', 'Protein ID', 'Protein']].rename(columns={'N-terminal': 'Non-Tryptic Termini'}),
     #                              df[['C-terminal', 'Protein ID', 'Protein']].rename(columns={'C-terminal': 'Non-Tryptic Termini'})])
     nontryp_termini = nontryp_termini.dropna()
-    nontryp_termini.to_csv(f'{output_directory}/non-tryptic_termini.csv', index=False)
+    nontryp_termini.to_csv(f'{output_directory}/{name}_termini.csv', index=False)
     return nontryp_termini
 
 
