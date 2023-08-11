@@ -1,8 +1,14 @@
 # Non-Tryptic Peptide Extractor and Protease Mapping
 
+GUI developed using Tkinter framework in Python to extract missed cleavage data from processed proteomics data resulting from Fragpipe and match termini to cleavage sites in the MEROPS database.
+
+
+
+
 ### Output files from non-tryptic peptide extraction
-Row counts are based on the validation data set (Klebsiella WT vs mutant) for this project.
-1. all_peptides.csv (~301,379 rows)
+Row counts are based on the validation data set used for the development of this project (*Klebsiella pneumoniae* wild-type vs Lon mutant data from Muselius, B., Sukumaran, A., Yeung, J., & Geddes-McAlister, J. (2020). Iron Limitation in Klebsiella pneumoniae Defines New Roles for Lon Protease in Homeostasis and Degradation by Quantitative Proteomics. Frontiers in Microbiology, 11. https://www.frontiersin.org/articles/10.3389/fmicb.2020.00546)
+
+* 1. all_peptides.csv (~301,379 rows)
 - Contains all peptides across all samples. 
 
 2. all_unique_proteins.csv (1974 rows)
