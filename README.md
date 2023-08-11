@@ -3,7 +3,7 @@
 GUI developed using Tkinter framework in Python to extract missed cleavage data from processed proteomics data resulting from Fragpipe and also match termini to cleavage sites in the MEROPS database.
 
 
-### Instructions
+## Instructions
 Peptide-Spectrum Match (PSM) TSV files resulting from processing by the Fragpipe software are used as the input for the extraction of missed cleavage data. 
 
 Input files may be grouped based on experiment/treatment by selecting a subset of input files in the listbox and then clicking the 'Group Files' button. Binary presence/absence (P/A) data will be generated based on the grouping of files.
