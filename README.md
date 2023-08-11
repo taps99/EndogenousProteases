@@ -1,8 +1,12 @@
 # Non-Tryptic Peptide Extractor and Protease Mapping
 
-GUI developed using Tkinter framework in Python to extract missed cleavage data from processed proteomics data resulting from Fragpipe and match termini to cleavage sites in the MEROPS database.
+GUI developed using Tkinter framework in Python to extract missed cleavage data from processed proteomics data resulting from Fragpipe and also match termini to cleavage sites in the MEROPS database.
 
 
+### Instructions
+Peptide-Spectrum Match (PSM) TSV files resulting from processing by the Fragpipe software are used as the input for the extraction of missed cleavage data. 
+
+Input files may be grouped based on experiment/treatment by selecting a subset of input files in the listbox and then clicking the 'Group Files' button. Binary presence/absence (P/A) data will be generated based on the grouping of files.
 
 
 ### Output files from non-tryptic peptide extraction
@@ -17,10 +21,10 @@ Row counts are based on the validation data set used for the development of this
 - non-tryptic_unique_proteins.csv (672 rows)
     - Contains P/A data the unique proteins associated with non-tryptic peptides found across all samples.
 
-- unique_non-tryptic_sequences (1331 rows)
+- unique_non-tryptic_sequences.csv (1331 rows)
     - Contains all unique non-tryptic peptides along with the protein along with protein sequence from UniProt for associated protein. Also contains columns containing non-tryptic termini.
 
-- non_unique_non-tryptic_sequences (3438 rows)
+- non_unique_non-tryptic_sequences.csv (3438 rows)
     - Contains ALL non-tryptic peptides (with duplicates) along with protein sequence from UniProt for associated protein. Also contains columns containing non-tryptic termini.
 
 - unique_non-tryptic_termini.csv
@@ -28,3 +32,13 @@ Row counts are based on the validation data set used for the development of this
 
 - non_unique_non-tryptic_termini.csv
     - Contains a list of all non-tryptic termini generated from non-tryptic peptides and their associated protein sequences. Also contains P/A data.
+
+
+### Output files from matching non-tryptic termini to MEROPS
+- exact_match.csv
+    - Contains all exact matches between non-tryptic termini in input file and cleavage sites in MEROPS.
+
+- fuzzy_match.csv 
+    - Contains all approximate matches between non-tryptic termini in input file and cleavage sites in MEROPS.
+    - The Levenshtein distance (or edit distance) is set to 2 in the fuzzy_match function.
+
