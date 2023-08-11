@@ -1,7 +1,5 @@
 import tkinter as tk
 from tkinter import ttk
-# from tkinter import *
-# from tkinter.ttk import *
 from tkinter import filedialog
 from tkinter import messagebox
 import pandas as pd
@@ -9,7 +7,9 @@ import os
 import requests
 import concurrent.futures
 import re
-# import protein_seq
+from tenacity import retry, stop_after_attempt, wait_fixed
+import threading
+
 
 
 
@@ -25,6 +25,8 @@ class GUI:
         self.completion_label = None
         # self.output_listbox = None
         self.output_files_label = None
+        self.loading_bar = None
+        self.listbox_entries = []
 
         # Setup widgets
         self.setup_widgets()
@@ -33,7 +35,6 @@ class GUI:
         self.window.title("Non-Tryptic Peptide Extractor")
         self.window.geometry("800x600")
         
-
         # Style configuration of widgets
         style = ttk.Style()
         self.window.tk.call("source", "Azure-ttk-theme-main/azure.tcl")
@@ -88,6 +89,9 @@ class GUI:
         self.output_directory_label = tk.Label(frame2, text="No output directory selected yet.")
         self.output_directory_label.grid(row=3, column=1, pady=10, padx=10, sticky=tk.W)
 
+        self.loading_bar = ttk.Progressbar(self.window, orient='horizontal', mode='determinate', length=100)
+        self.loading_bar.grid(row=8, column=0, pady=10, padx=10, sticky=tk.W)
+
     # Function to open file explorer to select files to be processed
     def browse_files(self):
         file_paths = filedialog.askopenfilenames(filetypes=[("TSV files", "*.tsv"), ("All files", "*.*")], multiple=True)
@@ -108,16 +112,12 @@ class GUI:
         
     # Function to setup interface elements (count of files, data structures to hold data,)
     def setup(self):
-        # global processed_dfs
-        # global processed_filepaths
-        self.processed_dfs = []
-        self.processed_filepaths = []
         count = 0
-
         os.makedirs(self.output_directory, exist_ok=True)
 
         for i, listbox_entry in enumerate(self.file_listbox.get(0, tk.END)):
             file_path = self.file_listbox.get(i)
+            self.listbox_entries.append(listbox_entry)
             directory_name = os.path.basename(os.path.dirname(file_path))
             # file_name_without_ext = os.path.splitext(os.path.basename(file_path))[0]
             # output_file_name = f"{file_name_without_ext}_output_{directory_name}.tsv"
@@ -132,17 +132,18 @@ class GUI:
             self.completion_label["text"] = f"Successfully processed {count} file."
         else:
             self.completion_label["text"] = f"Successfully processed {count} files."
-        return self.processed_dfs, self.processed_filepaths
+        return self.processed_filepaths
 
 
 
     def process_data(self, processed_filepaths):
         self.unprocessed_dfs = []
         count = 0
-        for i, listbox_entry in enumerate(self.file_listbox.get(0, tk.END)):
+
+        # for i, listbox_entry in enumerate(self.file_listbox.get(0, tk.END)):
+        for entry in self.listbox_entries:
             # Read the TSV file
-            count += 1
-            df = pd.read_csv(listbox_entry, delimiter='\t', low_memory=False)
+            df = pd.read_csv(entry, delimiter='\t', low_memory=False)
             self.unprocessed_dfs.append(df)
 
             # Data transformations
@@ -167,26 +168,25 @@ class GUI:
 
 
     def output_files(self, processed_filepaths, processed_dfs, unprocessed_dfs):
-        # Your code to output the files here...
+
         processed_dict = dict(zip(processed_filepaths, processed_dfs))
         unprocessed_dict = dict(zip(processed_filepaths, unprocessed_dfs))
-        # print(processed_dict_peptide)
+
 
         # This is to get the file that contains ALL peptides from the input files (includes tryptic and non-tryptic)
-        combined_df = pd.concat(unprocessed_dfs, ignore_index=True)
-        combined_df["Peptide:Protein"] = combined_df[['Peptide', 'Protein Description']].agg(':'.join, axis=1)
-        combined_df.to_csv(os.path.join(self.output_directory, 'all_peptides.csv'), index=False)
+        # combined_df = pd.concat(unprocessed_dfs, ignore_index=True)
+        # combined_df["Peptide:Protein"] = combined_df[['Peptide', 'Protein Description']].agg(':'.join, axis=1)
+        # # combined_df.to_csv(os.path.join(self.output_directory, 'all_peptides.csv'), index=False)
 
 
-        # This is to get the unique proteins from the entire dataset (includes tryptic and non-tryptic)
-        combined_df_subset = combined_df[['Peptide:Protein', 'Peptide', 'Prev AA', 'Next AA', 'Protein Description', 'Protein ID']].drop_duplicates(subset='Protein ID')
-        for i, df in enumerate(unprocessed_dict.values()):
-            sample_name = list(unprocessed_dict.keys())[i]
-            for protein in combined_df_subset:
-                combined_df_subset[sample_name] = combined_df_subset['Protein ID'].isin(df['Protein ID']).astype(int)
+        # # This is to get the unique proteins from the entire dataset (includes tryptic and non-tryptic)
+        # combined_df_subset = combined_df[['Peptide:Protein', 'Peptide', 'Prev AA', 'Next AA', 'Protein Description', 'Protein ID']].drop_duplicates(subset='Protein ID')
+        # for i, df in enumerate(unprocessed_dict.values()):
+        #     sample_name = list(unprocessed_dict.keys())[i]
+        #     for protein in combined_df_subset:
+        #         combined_df_subset[sample_name] = combined_df_subset['Protein ID'].isin(df['Protein ID']).astype(int)
 
-        combined_df_subset.to_csv(os.path.join(self.output_directory, 'all_unique_proteins.csv'), index=False)
-
+        # combined_df_subset.to_csv(os.path.join(self.output_directory, 'all_unique_proteins.csv'), index=False)
 
 
         # This part involves the actual output of non-tryptic peptides + relevant information
@@ -217,18 +217,12 @@ class GUI:
         # master_peptide_df.to_csv(os.path.join(self.output_directory, 'non_tryptic_peptides.csv'), index=False)
 
 
-
     ############ Protein-level output ############ 
         # Drop duplicates based on protein column to get only one row per protein, presence still based on peptide associated with this protein
         proteins_df = master_peptide_df.drop_duplicates(subset=['Protein ID'])
-        # proteins_df.to_csv('./non_tryptic_proteins.csv', index=False)
         proteins_df.to_csv(os.path.join(self.output_directory, 'non_tryptic_proteins.csv'), index=False)
 
         return master_peptide_df
-
-        
-
-
 
         # output_filepaths = [f'{self.output_directory}/all_peptides.csv', f'{self.output_directory}/all_unique_proteins.csv', f'{self.output_directory}/non_tryptic_peptides.csv', f'{self.output_directory}/non_tryptic_proteins.csv']
         # for filepath in output_filepaths:
@@ -238,20 +232,23 @@ class GUI:
 
     def fetch_sequence(self, peptide):
         url = f"https://www.uniprot.org/uniprot/{peptide}.fasta" 
-        response = requests.get(url)
+        # response = requests.get(url)
         # Check if successful request and extract protein sequence 
-        if response.ok:
+        try:
+        # if response.ok:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
             lines = response.text.strip().split("\n")
             protein_sequence = "".join(lines[1:])
             return peptide, protein_sequence
-        else:
+        except requests.exceptions.RequestException: 
+        # else:
             return peptide, None
     
     def get_protein_sequence(self, peptide_df):
-        # peptide_df = pd.read_csv(f'{self.output_directory}/non_tryptic_proteins.csv')
         peptides_id = peptide_df['Protein ID'].to_list()
         # Can alter this value to set the number of worker threads for parallel execution 
-        max_workers = 100
+        max_workers = 50
 
         # Store protein sequences with respective protein IDs in dictionary
         protein_sequences = {}
@@ -272,14 +269,13 @@ class GUI:
                 # Add sequence to respective protein ID in dictionary
                 if sequence:
                     protein_sequences[peptide] = sequence
-                else:
-                    protein_sequences[peptide] = 'NaN'
 
-        # Create Protein Sequence column in df and output to file
-        peptide_df['Protein Sequence'] = [protein_sequences[peptide] for peptide in peptides_id]
-        # peptide_df.to_csv(f'{self.output_directory}/nontryp_pept_sequences.csv', index=False)
-        # print(peptide_df.columns)
-        return peptide_df
+            
+            # Create Protein Sequence column in df and output to file
+            peptide_df['Protein Sequence'] = [protein_sequences[peptide] for peptide in peptides_id]
+            peptide_df.to_csv(f'{self.output_directory}/nontryp_pept_sequences.csv', index=False)
+            # print(peptide_df.columns)
+            return peptide_df
 
 
     def peptide_seq_match(self, df):
@@ -302,15 +298,15 @@ class GUI:
         
                 # Calculate indices for extracting the 5 amino acids before and after the match
                 # 2nd argument acts as a boundary, so there's no values that go outside of the sequence length that can't be indexed (can't go below 0, can't go above length of sequence)
-                before_start_index = max(start_index - 5, 0)
-                after_end_index = min(end_index + 5, len(sequence))
+                before_start_index = max(start_index - 4, 0)
+                after_end_index = min(end_index + 4, len(sequence))
 
                 # Extract 5 amino acids before and after the match
                 before_match = sequence[before_start_index:start_index]
                 after_match = sequence[end_index:after_end_index]
 
-                n_terminal = before_match + peptide[:5]
-                c_terminal = peptide[-5:] + after_match
+                n_terminal = before_match + peptide[:4]
+                c_terminal = peptide[-4:] + after_match
                 # print(f"N-Terminus: {n_terminal}, C-Terminus: {c_terminal}")
                 
                 if tryp_state == 'Non-Tryptic':
@@ -327,7 +323,7 @@ class GUI:
         # # Add dashes to the end of sequences that are less than 10 aa long for N-terminal cleavages
         for peptide in n_terminal_dict:
             string = n_terminal_dict[peptide]
-            while len(string) < 10:
+            while len(string) < 8:
                 if len(string) == 0:
                     break
                 else:
@@ -336,7 +332,7 @@ class GUI:
         # # Add dashes to beginning of sequences that are less than 10 aa long for C-terminal cleavages
         for peptide in c_terminal_dict:
             string = c_terminal_dict[peptide]
-            while len(string) < 10:
+            while len(string) < 8:
                 if len(string) == 0:
                     break
                 else:
@@ -352,9 +348,11 @@ class GUI:
 
     # This gets executed when you click 'Process' button
     def process_files(self):
-        self.processed_dfs, self.processed_filepaths = self.setup()
+        self.processed_filepaths = self.setup()
         self.processed_dfs, unprocessed_dfs = self.process_data(self.processed_filepaths)
         self.peptide_seq_match(self.get_protein_sequence(self.output_files(self.processed_filepaths, self.processed_dfs, unprocessed_dfs)))
+        # args = ((self.output_files(self.processed_filepaths, self.processed_dfs, unprocessed_dfs)),)
+        # threading.Thread(target=self.get_protein_sequence, args=args).start()
         # self.output_files(self.processed_filepaths, self.processed_dfs, unprocessed_dfs))
 
 

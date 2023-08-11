@@ -8,9 +8,16 @@ import requests
 from unipressed import IdMappingClient
 
 all_proteins_df = pd.read_csv('./all_unique_proteins.csv')
+non_tryp_proteins = pd.read_csv('./protein_output.csv')
 proteases_df = all_proteins_df[all_proteins_df['Protein Description'].str.contains(r'(?:protease|peptidase)')]
     
 proteases_df.to_csv('./proteases_df.csv', index=False)
+
+lon_protease = non_tryp_proteins[
+    (non_tryp_proteins['Protein'] == "Lon protease") |
+    (non_tryp_proteins['Protein'] == "endopeptidase La")
+]
+lon_protease.to_csv('./lon_protease.csv', index=False)
 # Read in file containing all unique proteins across samples
 def protease_func(df):
 
@@ -50,20 +57,16 @@ def protease_func(df):
     print(merops_id_list)
     df.loc[:,'MEROPS ID'] = merops_id_list
     print(df)
+    df.to_csv('./proteases_merops.csv', index=False)
     # merops_id = ''.join(merops_id_list)
     # return pd.Series({'MEROPS ID': merops_id})
     return df
 
 
+# protease_func(proteases_df)
 
-   
-    # for id in accessions:
-    #     request = IdMappingClient.submit(
-    #         source="UniProtKB_AC-ID", dest="MEROPS", ids=id
-    #     )
-    #     time.sleep(5)
-    #     print(list(request.each_result()))
-protease_func(proteases_df)
+
+
 # proteases_df[['MEROPS ID']] = proteases_df.apply(protease_func, axis=1)
 # proteases_df.to_csv('./protease_df_merops.csv', index=False)
 

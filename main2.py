@@ -46,12 +46,8 @@ def process_files():
         
         processed_filepaths.append(sample_name)
         count +=1
-    # for file in processed_filepaths:
-    #     # processed_file_listbox.insert(0, file) # Shows list of processed files in 2nd listbox
-    #     sample_name = file.split('.')[0]
-    #     count +=1
 
-    # for i in range(file_listbox.size()):
+
     for i, listbox_entry in enumerate(file_listbox.get(0, END)):
         # Read the TSV file
         df = pd.read_csv(listbox_entry, delimiter='\t', low_memory=False)
@@ -94,7 +90,7 @@ def process_files():
     # This is to get the file that contains ALL peptides from the input files (includes tryptic and non-tryptic)
     combined_df = pd.concat(unprocessed_dfs, ignore_index=TRUE)
     combined_df["Peptide:Protein"] = combined_df[['Peptide', 'Protein Description']].agg(':'.join, axis=1)
-    combined_df.to_csv('./all_peptides.csv', index=False)
+    # combined_df.to_csv('./all_peptides.csv', index=False)
     combined_df.to_csv(os.path.join(output_directory, 'all_peptides.csv'), index=False)
 
 
@@ -105,7 +101,7 @@ def process_files():
         for protein in combined_df_subset:
             combined_df_subset[sample_name] = combined_df_subset['Protein ID'].isin(df['Protein ID']).astype(int)
 
-    combined_df_subset.to_csv('all_unique_proteins.csv', index=False)
+    # combined_df_subset.to_csv('all_unique_proteins.csv', index=False)
     combined_df_subset.to_csv(os.path.join(output_directory, 'all_unique_proteins.csv'), index=False)
     # result_df = pd.DataFrame(columns=['Peptide:Protein'])
 
@@ -137,7 +133,7 @@ def process_files():
             master_peptide_df[sample_name] = master_peptide_df['Peptide:Protein'].isin(df['Peptide:Protein']).astype(int)
     
     # File that contains all non-tryptic peptides across samples
-    master_peptide_df.to_csv('./non_tryptic_peptides.csv', index=False)
+    # master_peptide_df.to_csv('./non_tryptic_peptides.csv', index=False)
     master_peptide_df.to_csv(os.path.join(output_directory, 'non_tryptic_peptides.csv'), index=False)
 
 
@@ -145,7 +141,7 @@ def process_files():
  ############ Protein-level output ############ 
     # Drop duplicates based on protein column to get only one row per protein, presence still based on peptide associated with this protein
     proteins_df = master_peptide_df.drop_duplicates(subset=['Protein ID'])
-    proteins_df.to_csv('./non_tryptic_proteins.csv', index=False)
+    # proteins_df.to_csv('./non_tryptic_proteins.csv', index=False)
     proteins_df.to_csv(os.path.join(output_directory, 'non_tryptic_proteins.csv'), index=False)
 
 
