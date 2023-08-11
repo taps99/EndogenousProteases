@@ -5,85 +5,16 @@ import pybktree
 import Levenshtein
 
 
-    # peptide_df = pd.read_csv(df_path)
-    # peptide_df = pd.read_csv('Good_Output/nontryp_pept_sequences.csv')
-    # peptide_df = pd.read_csv('test2_output/non-tryp_pept_sequences.csv')
-
-    # nontryp_termini = pd.concat([peptide_df['N-terminal'], peptide_df['C-terminal']])
-    # nontryp_termini = pd.DataFrame(nontryp_termini, columns=['Non-Tryptic Termini'])
-    # nontryp_termini_only = nontryp_termini.dropna()
-
-    # for i, row in nontryp_termini.iterrows():
-    #     sites = row['Non-Tryptic Termini']
-    #     if sites in peptide_df['C-terminal'].values:
-    #         nontryp_termini.at[i, 'Protein ID'] = peptide_df.loc[peptide_df['C-terminal'] == sites, 'Protein ID'].iloc[0]
-    #         nontryp_termini.at[i, 'Protein'] = peptide_df.loc[peptide_df['C-terminal'] == sites, 'Protein'].iloc[0]
-    #     elif sites in peptide_df['N-terminal'].values:
-    #         nontryp_termini.at[i, 'Protein ID'] = peptide_df.loc[peptide_df['N-terminal'] == sites, 'Protein ID'].iloc[0]
-    #         nontryp_termini.at[i, 'Protein'] = peptide_df.loc[peptide_df['N-terminal'] == sites, 'Protein'].iloc[0]
-            
-
-    # nontryp_termini = nontryp_termini.dropna()
-    # nontryp_termini.to_csv('non_tryp_termini.csv', index=False)
-
-### Substrate table processing to clean substrate_search table from MEROPS and also get a list of organisms to be used in GUI
-def substrate_processing(path):
-    amino_acid_dict = {
-        'Ala': 'A',
-        'Arg': 'R',
-        'Asn': 'N',
-        'Asp': 'D',
-        'Cys': 'C',
-        'Gln': 'Q',
-        'Glu': 'E',
-        'Gly': 'G',
-        'His': 'H',
-        'Ile': 'I',
-        'Leu': 'L',
-        'Lys': 'K',
-        'Met': 'M',
-        'Phe': 'F',
-        'Pro': 'P',
-        'Ser': 'S',
-        'Thr': 'T',
-        'Trp': 'W',
-        'Tyr': 'Y',
-        'Val': 'V'
-    }
-    # current_dir = os.path.dirname(os.path.realpath(__file__))
-    # csv_path = os.path.join(current_dir, 'substrate.csv')
-    substrate_df = pd.read_csv(path)
-
-    # Subset substrate_df to include relevant columns
-    substrate_subsites = substrate_df.loc[:,['Substrate_name', 'Site_P4', 'Site_P3', 'Site_P2', 'Site_P1', 'Site_P1prime', 'Site_P2prime','Site_P3prime', 'Site_P4prime', 'organism', 'Protease', 'cleavage_type']]
-
-    # Replace abbreviations with single letter code for amino acids
-    substrate_subsites = substrate_subsites.replace(amino_acid_dict)
-
-    # Join the amino acids in each subsite together to create an amino acid sequence representing the cleavage site of a substrate 
-    substrate_subsites['Cleavage Site'] = substrate_subsites[['Site_P4', 'Site_P3', 'Site_P2', 'Site_P1', 'Site_P1prime', 'Site_P2prime','Site_P3prime', 'Site_P4prime']].apply(lambda row: ''.join(row.values.astype(str)), axis=1) # 95653 substrates total
-    substrate_subsites = substrate_subsites.dropna(subset=['organism', 'Substrate_name', 'Protease'])
-    # print(len(substrate_subsites)) # 87968 substrates after dropping NA's
-
-    # Organism list
-    organisms = sorted(substrate_subsites['organism'].str.lstrip().str.capitalize().unique().tolist()) # 1417 unique organisms -> 1397 unique organisms
-    organisms_series = pd.Series(organisms)
-    organisms_clean = organisms_series[~organisms_series.str.match('^\d')]
-    print(len(organisms_clean))
-    organisms_clean.to_csv('organisms_merops.csv', index=False, header=False)
-    substrate_subsites.to_csv('substrates_merops.csv', index=False)
-    return organisms, substrate_subsites
-# substrate_processing('./substrate.csv')
-
-
-
-
 ######## Matching functions ########
 
 # Exact matching
 def exact_match(organism, substrate_df, termini_path, output_directory):
     termini = pd.read_csv(termini_path)
     substrate_subsites_filtered = substrate_df[substrate_df['organism'] == organism].reset_index(drop=True)
+    for terminus in termini['Non-Tryptic Termini']:
+        if len(terminus) != 8:
+            raise ValueError(f"Invalid length of terminus: {terminus}. Each terminus should be of length 8.")
+        
     matches = substrate_subsites_filtered[substrate_subsites_filtered['Cleavage Site'].isin(termini['Non-Tryptic Termini'])]
     matches = matches.drop(['Site_P4', 'Site_P3', 'Site_P2', 'Site_P1', 'Site_P1prime', 'Site_P2prime','Site_P3prime', 'Site_P4prime'], axis=1)
     
@@ -104,12 +35,6 @@ def exact_match(organism, substrate_df, termini_path, output_directory):
     matches.to_csv(f'{output_directory}/exact_matches.csv', index=False)
     return matches
 
-# organisms, substrate_subsites = substrate_processing('./substrate.csv')
-# termini = pd.read_csv('./Good_Output/non-tryp_termini.csv')
-# exact_match('Klebsiella pneumoniae', substrate_subsites,termini,'.')
-
-
-
 
 # Levenshtein distance fuzzy-matching
 def fuzzy_match(organism, substrate_df, termini_path, output_directory):
@@ -120,6 +45,9 @@ def fuzzy_match(organism, substrate_df, termini_path, output_directory):
     termini = termini.reset_index(drop=True)
     matches = []
 
+    for terminus in input_termini:
+        if len(terminus) != 8:
+            raise ValueError(f"This file contains termini with invalid lengths. Each terminus should be of length 8 to match to cleavage sites found in the MEROPS database.")
     # Define Levenshtein distance metric
     def metric(a, b): # a and b are pairs of index, string -> string is a non-tryptic terminus/cleavage site
         # Check exact match for the 4th and 5th amino acids
@@ -137,7 +65,7 @@ def fuzzy_match(organism, substrate_df, termini_path, output_directory):
         for _, (j, cleave_site) in tree.find((None, terminus), 2):  # Find matches -> set Levenshtein distance to 2
             matches.append((terminus, termini.loc[i,'Protein'], termini.loc[i,'Protein ID'], cleave_site, substrate_subsites_filtered.loc[j, 'Substrate_name'], substrate_subsites_filtered.loc[j,'Protease'], substrate_subsites_filtered.loc[j,'cleavage_type'],substrate_subsites_filtered.loc[j, 'organism']))
 
-
+            
     matches_df = pd.DataFrame(matches, columns=['Non-Tryptic Termini', 'Protein', 'Protein ID', 'Cleavage Site', 'MEROPS Substrate', 'Protease', 'Cleavage Type',  'Organism'])
     matches_df = matches_df.drop_duplicates()
     matches_df.to_csv(f'{output_directory}/fuzzy_matches.csv', index=False)

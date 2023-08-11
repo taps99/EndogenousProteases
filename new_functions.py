@@ -66,8 +66,9 @@ def output_files(processed_filepaths, processed_dfs, unprocessed_dfs, output_dir
     # This part involves the actual output of non-tryptic peptides + relevant information
     unique_peptide_dfs=[]
     for df in processed_dfs: # GETS UNIQUE PEPTIDES FROM EACH SAMPLE
-        unique_peptides = df.drop_duplicates(subset=['Peptide:Protein'])
-        unique_peptide_dfs.append(unique_peptides) 
+        # unique_peptides = df.drop_duplicates(subset=['Peptide:Protein'])
+        # unique_peptide_dfs.append(unique_peptides) 
+        unique_peptide_dfs.append(df) 
 
     combined_peptide_df = pd.concat(unique_peptide_dfs) # CONCAT THE NON-TRYPTIC PEPTIDES FROM EACH SAMPLE INTO ONE LARGE DF
     # THEN ONLY KEEP UNIQUE ONES, WHICH MEANS THIS ONE CONTAINS ALL UNIQUE PEPTIDES FROM ALL SAMPLES
@@ -96,7 +97,8 @@ def output_files(processed_filepaths, processed_dfs, unprocessed_dfs, output_dir
         
 
     # File that contains all non-tryptic peptides across samples
-    master_peptide_df_all.to_csv(os.path.join(output_directory, 'all_non_tryptic_peptides.csv'), index=False)
+    # master_peptide_df_all.to_csv(os.path.join(output_directory, 'all_non-tryptic_peptides.csv'), index=False)
+
     # Get counts of each protein associated with non-tryptic peptides (how many times a certain protein appears among the list of all non-tryptic peptides)
     # Gives us qualitative insight on potential targets of endogenous proteolysis (if a certain protein has many occurrences of non-tryptic peptides = more likely target of endogenous proteolysis)
     # protein_counts = master_peptide_df_all['Protein ID'].value_counts()
@@ -119,7 +121,7 @@ def output_files(processed_filepaths, processed_dfs, unprocessed_dfs, output_dir
 
     proteins_df.drop_duplicates(subset=['Protein ID'],inplace=True)
     proteins_df.to_csv(os.path.join(output_directory, 'non-tryptic_unique_proteins.csv'), index=False)
-    return master_peptide_df, master_peptide_df_all
+    return master_peptide_df_all
 
 
 
@@ -138,6 +140,8 @@ def fetch_sequence(peptide):
     # else:
         return peptide, None
 
+
+
 def get_protein_sequence(peptide_df):
     peptides_id = peptide_df['Protein ID'].to_list()
     # Can alter this value to set the number of worker threads for parallel execution 
@@ -145,7 +149,6 @@ def get_protein_sequence(peptide_df):
 
     # Store protein sequences with respective protein IDs in dictionary
     protein_sequences = {}
-
     # Use ThreadPoolExecutor from concurrent.futures to launch parallel fetching of protein sequences
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         # List to store Future objects which represent the execution of the fetch_sequence method
@@ -163,7 +166,6 @@ def get_protein_sequence(peptide_df):
             if sequence:
                 protein_sequences[peptide] = sequence
 
-        
         # Create Protein Sequence column in df and output to file
         peptide_df['Protein Sequence'] = [protein_sequences[peptide] for peptide in peptides_id]
         # peptide_df.to_csv(f'{output_directory}/nontryp_pept_sequences.csv', index=False)
@@ -238,15 +240,16 @@ def peptide_seq_match(df:pd.DataFrame, name, output_directory):
     df['N-terminal'] = df['Peptide'].map(n_terminal_dict)
     df['C-terminal'] = df['Peptide'].map(c_terminal_dict)
     df['N-terminal'] = df['N-terminal'].fillna('')
-    df = df[~df['N-terminal'].str.startswith('---M')]
+    df = df[~df['N-terminal'].str.startswith('---M')] # remove termini that represent N-terminal methionine cleavage
     df['N-terminal'] = df['N-terminal'].replace('', np.nan)
     important_cols = ['Peptide:Protein','Tryptic State','Protein ID','Prev AA','Next AA','Peptide','Protein','Protein Sequence','N-terminal','C-terminal']
     new_cols = important_cols + (df.columns.drop(important_cols).tolist())
     df = df[new_cols]
-    df.to_csv(f'{output_directory}/{name}.csv', index=False)
-    return df
+    df2 = df.drop_duplicates(subset=["Peptide:Protein"])
+    df.to_csv(f'{output_directory}/non-unique_{name}.csv', index=False)
+    df2.to_csv(f'{output_directory}/unique_{name}.csv', index=False)
+    return df, df2
 
-    # nontryp_termini_only = nontryp_termini.dropna()
 
 def create_termini_list(df:pd.DataFrame, name, output_directory):
     df_subset = df.iloc[:, 10:]
@@ -256,14 +259,52 @@ def create_termini_list(df:pd.DataFrame, name, output_directory):
 
 # Concatenate these two dataframes
     nontryp_termini = pd.concat([df_N, df_C])
-    # nontryp_termini = pd.concat([df_subset[['N-terminal'] + presence_cols].rename(columns={'N-terminal': 'Non-Tryptic Termini'}),
-    #                              df_subset[['C-terminal'] + presence_cols].rename(columns={'C-terminal': 'Non-Tryptic Termini'})])
-    # nontryp_termini = pd.concat([df[['N-terminal', 'Protein ID', 'Protein']].rename(columns={'N-terminal': 'Non-Tryptic Termini'}),
-    #                              df[['C-terminal', 'Protein ID', 'Protein']].rename(columns={'C-terminal': 'Non-Tryptic Termini'})])
     nontryp_termini = nontryp_termini.dropna()
-    nontryp_termini.to_csv(f'{output_directory}/{name}_termini.csv', index=False)
+    nontryp_termini.to_csv(f'{output_directory}/{name}.csv', index=False)
     return nontryp_termini
 
+### Substrate table processing to clean substrate_search table from MEROPS and also get a list of organisms to be used in GUI
+def substrate_processing(path):
+    amino_acid_dict = {
+        'Ala': 'A',
+        'Arg': 'R',
+        'Asn': 'N',
+        'Asp': 'D',
+        'Cys': 'C',
+        'Gln': 'Q',
+        'Glu': 'E',
+        'Gly': 'G',
+        'His': 'H',
+        'Ile': 'I',
+        'Leu': 'L',
+        'Lys': 'K',
+        'Met': 'M',
+        'Phe': 'F',
+        'Pro': 'P',
+        'Ser': 'S',
+        'Thr': 'T',
+        'Trp': 'W',
+        'Tyr': 'Y',
+        'Val': 'V'
+    }
+    substrate_df = pd.read_csv(path)
 
+    # Subset substrate_df to include relevant columns
+    substrate_subsites = substrate_df.loc[:,['Substrate_name', 'Site_P4', 'Site_P3', 'Site_P2', 'Site_P1', 'Site_P1prime', 'Site_P2prime','Site_P3prime', 'Site_P4prime', 'organism', 'Protease', 'cleavage_type']]
 
+    # Replace abbreviations with single letter code for amino acids
+    substrate_subsites = substrate_subsites.replace(amino_acid_dict)
+
+    # Join the amino acids in each subsite together to create an amino acid sequence representing the cleavage site of a substrate 
+    substrate_subsites['Cleavage Site'] = substrate_subsites[['Site_P4', 'Site_P3', 'Site_P2', 'Site_P1', 'Site_P1prime', 'Site_P2prime','Site_P3prime', 'Site_P4prime']].apply(lambda row: ''.join(row.values.astype(str)), axis=1) # 95653 substrates total
+    substrate_subsites = substrate_subsites.dropna(subset=['organism', 'Substrate_name', 'Protease'])
+    # print(len(substrate_subsites)) # 87968 substrates after dropping NA's
+
+    # Organism list
+    organisms = sorted(substrate_subsites['organism'].str.lstrip().str.capitalize().unique().tolist()) # 1417 unique organisms -> 1397 unique organisms
+    organisms_series = pd.Series(organisms)
+    organisms_clean = organisms_series[~organisms_series.str.match('^\d')]
+    organisms_clean.to_csv('organisms_merops.csv', index=False, header=False)
+    substrate_subsites.to_csv('substrates_merops.csv', index=False)
+    return organisms, substrate_subsites
 

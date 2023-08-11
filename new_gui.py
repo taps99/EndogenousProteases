@@ -22,11 +22,12 @@ def main():
     else:
     # The application is running as a script
         application_path = os.path.dirname(os.path.abspath(__file__))
+    # Set up path variables for substrates and organism lists
     substrate_path = os.path.join(application_path, 'substrates_merops.csv')
     organisms_path = os.path.join(application_path, 'organisms_merops.csv')
     substrate_df = pd.read_csv(substrate_path)
     organisms = pd.read_csv(organisms_path)
-    organisms = organisms.iloc[:,0].tolist()
+    organisms = organisms.iloc[:,0].tolist() # convert to list for dropdown menu
     global termini_file_path
     global filtered_termini_file_path
     termini_file_path = None
@@ -43,9 +44,6 @@ def main():
 
     # Function to remove selected files from list
     def remove_files():
-        # selected_files = file_listbox.curselection()
-        # for index in selected_files[::-1]:
-        #     file_listbox.delete(index)
         selected_files = treeview.selection()
         for selected in selected_files:
             treeview.delete(selected)
@@ -64,8 +62,8 @@ def main():
         os.makedirs(output_directory, exist_ok=True)
         switch_button_state()
         return output_directory
-        
-    
+
+    # Initialize group names for presence/absence data
     def setup():
         count = 0
         processed_filepaths = []
@@ -91,12 +89,11 @@ def main():
 
         return processed_filepaths, listbox_entries 
 
+    # Group files button function
     def group_files():
         global group_name
-        # group_name_list = []
         if len(treeview.selection()) > 0:
             group_name = simpledialog.askstring("Input", "Enter the group name:")
-            # group_name_list.append(group_name)
             if group_name:
                 selected_items = treeview.selection()
                 for item in selected_items:
@@ -106,7 +103,7 @@ def main():
             messagebox.showerror("Error", "No files were selected.")
 
 
-    # This gets executed when you click 'Process' button
+    # Process button function
     def process_files_button():
         global process_thread
         completion_label["text"] = ""
@@ -129,19 +126,15 @@ def main():
         process_thread = threading.Thread(target=processing_functions)
         process_thread.start()
 
-
-
-    
+    # Switch state of process button once at least one file and output directory has been selected.
     def switch_button_state():
-        # if file_listbox.size() > 0 and output_directory:
         if len(treeview.get_children()) > 0 and output_directory != "":
             process_button['style'] = 'Accent.TButton'
         else:
             process_button['style'] = 'TButton'
 
+    # This function is run on another thread, which holds all the main data processing functions for non-tryptic peptide extraction
     def processing_functions():
-        # global organisms
-        # global substrate_df
         global termini_list
 
         processed_filepaths = setup()[0]
@@ -158,7 +151,7 @@ def main():
             barnum.set(0)
             return
         try:
-            non_tryp_peptides, all_non_tryp_peptides = output_files(processed_filepaths, processed_dfs, unprocessed_dfs, output_directory)
+            all_non_tryp_peptides = output_files(processed_filepaths, processed_dfs, unprocessed_dfs, output_directory)
         except Exception as e:
             messagebox.showerror("Error", f"An unexpected error occurred while generating the output files: {str(e)}")
             completion_label["text"] = "Process aborted. Please try again."
@@ -167,20 +160,19 @@ def main():
         for i in range(35, 50):
             barnum.set(i)
             time.sleep(0.05)
-        completion_label["text"] = "Processing peptides..."
+        completion_label["text"] = f"Retrieving protein sequences from UniProt for {str(len(all_non_tryp_peptides))} peptides..."
         for i in range(50, 81):
             barnum.set(i)
             time.sleep(0.05)
         try:
-            peptide_df = peptide_seq_match(get_protein_sequence(non_tryp_peptides), "unique_non_tryp_sequences",output_directory)
-            all_peptide_df = peptide_seq_match(get_protein_sequence(all_non_tryp_peptides), "non_unique_non_tryp_sequences", output_directory)
+            all_peptide_df, peptide_df = peptide_seq_match(get_protein_sequence(all_non_tryp_peptides), "non-tryptic_sequences", output_directory)
         except Exception as e:
             messagebox.showerror("Error", f"An unexpected error occurred while acquiring sequences from UniProt: {str(e)}")
             completion_label["text"] = "Process aborted. Please try again."
             barnum.set(0)
             return
-        termini_list = create_termini_list(peptide_df,"unique_non_tryp", output_directory)
-        termini_list_all = create_termini_list(all_peptide_df, "non_unique_non_tryp", output_directory)
+        termini_list = create_termini_list(peptide_df,"unique_non-tryptic_termini", output_directory)
+        termini_list_all = create_termini_list(all_peptide_df, "non_unique_non-tryptic_termini", output_directory)
         completion_label["text"] = "Finalizing..."
         for i in range(80, 101):
             barnum.set(i)
@@ -192,28 +184,27 @@ def main():
         else:
             completion_label["text"] = f"Successfully processed {count} files."
 
-        output_filepaths = [f'{output_directory}/all_peptides.csv', f'{output_directory}/all_non_tryptic_peptides.csv', f'{output_directory}/all_unique_proteins.csv', f'{output_directory}/non-tryptic_pept_sequences.csv', f'{output_directory}/non-tryptic_unique_proteins.csv', f'{output_directory}/non-tryp_termini.csv', f'{output_directory}/all_proteases.csv']
+        output_filepaths = [f'{output_directory}/all_peptides.csv', f'{output_directory}/all_unique_proteins.csv', f'{output_directory}/all_proteases.csv', 
+                            f'{output_directory}/non-tryptic_unique_proteins.csv', f'{output_directory}/unique_non-tryptic_sequences.csv', f'{output_directory}/non_unique_non-tryptic_sequences.csv', f'{output_directory}/unique_non-tryptic_termini.csv', f'{output_directory}/non_unique_non-tryptic_termini.csv']
         # output_filepaths = [os.path.join(output_directory,f) for (dirpath, dirnames, filenames) in os.walk(output_directory) for f in filenames]
         # for dirpath, dirnames, filenames in os.walk(output_directory):
         #     for filename in filenames:
         #         output_filepaths.append(os.path.join(dirpath, filename))
         paths_text = '\n'.join(output_filepaths)
         output_files_label["text"] = f"Output files:\n{paths_text}"
-        # termini_count = len(termini_list)
-        # info_label["text"] = f"Protease matching for {termini_count} non-tryptic termini in:\n{output_filepaths[-1]}"
-        # match_method_menu["state"] = tk.NORMAL
-        # organism_menu["state"] = tk.NORMAL
-        # protease_button["state"] = tk.NORMAL
-        # protease_button["style"] = 'Accent.TButton'
-        # grouping_button1["style"] = 'Accent.TButton'
+
         return termini_list, termini_list_all
 
 
     def select_termini_file():
         global termini_file_path
-        termini_file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("All files", "*.*")], multiple=False)
+        global termini_count
+        termini_file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"),("All files", "*.*")], multiple=False)
+        df = pd.read_csv(termini_file_path)
+        termini_count = str(len(df))
         if len(str(termini_file_path)) > 0:
             termini_file_label['text'] = f'File: {termini_file_path}'
+            termini_count_label["text"] = f'Matching with {termini_count} termini.'
         else:
             termini_file_label['text'] = "No file has been selected. Please select a file containing non-tryptic termini."
         return termini_file_path
@@ -269,7 +260,7 @@ def main():
             dropdown.configure(state='disabled')
             dropdown.grid(row=row_count, column=3, pady=(10,0), padx=(0,10), sticky=tk.W)
 
-            comparator_options = ['Equal to', 'Less Than', 'More Than']
+            comparator_options = ['Equal to', 'Less Than or Equal to', 'More Than or Equal to']
             selected_comparator = tk.StringVar()  # create a StringVar for the comparator
             selected_option_dict[group] = (selected_option, selected_comparator)  # store tuple of selected option and comparator
 
@@ -304,15 +295,17 @@ def main():
                 # mask = df[columns_for_group].sum(axis=1) >= option_var.get()
                 if comparator_var.get() == 'Equal to':
                     mask = df[columns_for_group].sum(axis=1) == option_var.get()
-                elif comparator_var.get() == 'Less Than':
-                    mask = df[columns_for_group].sum(axis=1) < option_var.get()
-                elif comparator_var.get() == 'More Than':
-                    mask = df[columns_for_group].sum(axis=1) > option_var.get()
+                elif comparator_var.get() == 'Less Than or Equal to':
+                    mask = df[columns_for_group].sum(axis=1) <= option_var.get()
+                elif comparator_var.get() == 'More Than or Equal to':
+                    mask = df[columns_for_group].sum(axis=1) >= option_var.get()
                 masks.append(mask)
             
             final_mask = np.logical_and.reduce(masks)
             df = df[final_mask]
             print(len(df))
+            termini_count = str(len(df))
+            termini_count_label["text"] = f"Matching with {termini_count} termini."
             df.to_csv(f'{output_directory}/filtered_termini.csv', index=False)
             filtered_termini_file_path = f'{output_directory}/filtered_termini.csv'
             # termini_file_path = filtered_termini_file_path
@@ -360,12 +353,6 @@ def main():
         tree = None
         search_term = update_organism_menu().capitalize()
         method = update_method_menu()
-        # if termini_file_path is not None:
-        #     termini_list = termini_file_path
-        # else:
-        #     termini_list
-        # print(f'Species: {search_term}')
-        # print(f'Method: {method}')
         if tree is not None:
             tree.destroy()
         table_frame = ttk.Frame(second_tab)
@@ -381,6 +368,9 @@ def main():
                     exact_matches = exact_match(search_term, substrate_df, filtered_termini_file_path, output_directory)
                 else:
                     exact_matches = exact_match(search_term, substrate_df, termini_file_path, output_directory)
+            except KeyError as k:
+                messagebox.showerror("Error", f"This file does not contain the correct column names: {str(k)}")
+                return
             except Exception as e:
                 messagebox.showerror("Error", f"An unexpected error occurred while attempting to match termini to cleavage sites: {str(e)}")
                 return
@@ -389,7 +379,7 @@ def main():
             for i in tree.get_children():
                 tree.delete(i)
             columns = list(exact_matches.columns)
-        # Create the columns in the tree widget.
+        # Create the columns in the tree widget
             tree["columns"] = columns
             for column in columns:
                 tree.column(column, stretch=False, anchor=tk.CENTER, width=125)
@@ -409,6 +399,9 @@ def main():
                     fuzzy_matches = fuzzy_match(search_term, substrate_df, filtered_termini_file_path, output_directory)
                 else:
                     fuzzy_matches = fuzzy_match(search_term, substrate_df, termini_file_path, output_directory)
+            except KeyError as k:
+                messagebox.showerror("Error", f"This file does not contain the correct column names: {str(k)}")
+                return
             except Exception as e:
                 messagebox.showerror("Error", f"An unexpected error occurred while attempting to match termini to cleavage sites: {str(e)}")
                 return
@@ -577,6 +570,9 @@ def main():
     # scrollbar.grid(row=1, column=2, sticky=tk.NS)
 
 
+
+
+
     ###############################
     #### Protease Matching Tab #### 
     second_tab = tk.Frame(notebook, width=1200, height=1600, highlightthickness=0)
@@ -621,6 +617,9 @@ def main():
 
     protease_button = ttk.Button(second_tab, text="Match Termini", command=protease_match_button, state=tk.NORMAL, style = 'Accent.TButton')
     protease_button.grid(row=4, column=0, padx=10, pady=10, sticky=tk.W)
+
+    termini_count_label = ttk.Label(second_tab, text="", justify= tk.LEFT)
+    termini_count_label.grid(row=4, column=0, pady=10, padx=(120,0), sticky=tk.W)
 
     method_var = tk.StringVar()
     method_var.trace("w", update_method_menu)
