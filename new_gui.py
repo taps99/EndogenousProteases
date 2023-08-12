@@ -184,12 +184,9 @@ def main():
         else:
             completion_label["text"] = f"Successfully processed {count} files."
 
-        output_filepaths = [f'{output_directory}/all_peptides.csv', f'{output_directory}/all_unique_proteins.csv', f'{output_directory}/all_proteases.csv', 
+        output_filepaths = [f'{output_directory}/all_peptides.csv', f'{output_directory}/all_unique_proteins.csv', 
                             f'{output_directory}/non-tryptic_unique_proteins.csv', f'{output_directory}/unique_non-tryptic_sequences.csv', f'{output_directory}/non_unique_non-tryptic_sequences.csv', f'{output_directory}/unique_non-tryptic_termini.csv', f'{output_directory}/non_unique_non-tryptic_termini.csv']
-        # output_filepaths = [os.path.join(output_directory,f) for (dirpath, dirnames, filenames) in os.walk(output_directory) for f in filenames]
-        # for dirpath, dirnames, filenames in os.walk(output_directory):
-        #     for filename in filenames:
-        #         output_filepaths.append(os.path.join(dirpath, filename))
+
         paths_text = '\n'.join(output_filepaths)
         output_files_label["text"] = f"Output files:\n{paths_text}"
 
@@ -467,8 +464,26 @@ def main():
     window.after(0, update_organism_menu, organisms)
     # Style configuration of widgets
     style = ttk.Style()
-    window.tk.call("source", "Azure-ttk-theme-main/azure.tcl")
-    window.tk.call("set_theme", "dark")
+    
+    def get_path(filename):
+        if hasattr(sys, "_MEIPASS"):  # True if it's an exe
+            bundled_path = os.path.join(sys._MEIPASS, filename)
+            if os.path.exists(bundled_path):
+                return bundled_path
+            else:  # In case you decide to keep the directory structure in future bundles
+                return os.path.join(sys._MEIPASS, "Azure-ttk-theme-main", filename)
+        else:
+            direct_path = filename
+            if os.path.exists(direct_path):
+                return direct_path
+            else:  # Running script directly
+                return os.path.join("Azure-ttk-theme-main", filename)
+    try:
+        tcl_folder = get_path("azure.tcl")
+        window.tk.call("source", tcl_folder)
+        window.tk.call("set_theme", "dark")
+    except:
+        pass
 
     style.configure("TButton", font=('TkDefaultFont'))
     style.configure("TListbox", padding=10)

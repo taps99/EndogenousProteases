@@ -59,8 +59,8 @@ def output_files(processed_filepaths, processed_dfs, unprocessed_dfs, output_dir
 
     combined_df_subset.to_csv(os.path.join(output_directory, 'all_unique_proteins.csv'), index=False)
 
-    proteases = combined_df_subset[combined_df_subset['Protein Description'].str.contains(r'(?:protease|peptidase)')]
-    proteases.to_csv(os.path.join(output_directory, 'all_proteases.csv'), index=False)
+    # proteases = combined_df_subset[combined_df_subset['Protein Description'].str.contains(r'(?:protease|peptidase)')]
+    # proteases.to_csv(os.path.join(output_directory, 'all_proteases.csv'), index=False)
            
 
     # This part involves the actual output of non-tryptic peptides + relevant information
@@ -151,10 +151,10 @@ def get_protein_sequence(peptide_df):
     protein_sequences = {}
     # Use ThreadPoolExecutor from concurrent.futures to launch parallel fetching of protein sequences
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # List to store Future objects which represent the execution of the fetch_sequence method
+        # List to store Future objects which represent the execution of the fetch_sequence function
         futures = []
         for peptide in peptides_id:
-            # Submit fetch_sequence method for execution and store the Future object and then add it to the futures list
+            # Submit fetch_sequence function for execution and store the Future object and then add it to the futures list
             future = executor.submit(fetch_sequence, peptide)
             futures.append(future)
 
@@ -168,13 +168,10 @@ def get_protein_sequence(peptide_df):
 
         # Create Protein Sequence column in df and output to file
         peptide_df['Protein Sequence'] = [protein_sequences[peptide] for peptide in peptides_id]
-        # peptide_df.to_csv(f'{output_directory}/nontryp_pept_sequences.csv', index=False)
-        # print(peptide_df.columns)
         return peptide_df
 
 
 def peptide_seq_match(df:pd.DataFrame, name, output_directory):
-    # match peptide with protein sequence using re 
     peptide = df['Peptide'].astype(str)
     prev_AA = df['Prev AA'].astype(str)
     tryp_state = df['Tryptic State'].astype(str)
@@ -183,6 +180,7 @@ def peptide_seq_match(df:pd.DataFrame, name, output_directory):
     n_terminal_dict = {}
     c_terminal_dict = {}
 
+    # Match peptide with protein sequence using re 
     for peptide, prev_AA, tryp_state, sequence in zip(peptide, prev_AA, tryp_state, sequence):
         matches = list(re.finditer(peptide, sequence))
         if matches:
@@ -201,7 +199,6 @@ def peptide_seq_match(df:pd.DataFrame, name, output_directory):
 
             n_terminal = before_match + peptide[:4]
             c_terminal = peptide[-4:] + after_match
-            # print(f"N-Terminus: {n_terminal}, C-Terminus: {c_terminal}")
             
             if tryp_state == 'Non-Tryptic':
                 n_terminal_dict[peptide] = n_terminal
@@ -214,7 +211,7 @@ def peptide_seq_match(df:pd.DataFrame, name, output_directory):
                     n_terminal_dict[peptide] = n_terminal
                     c_terminal_dict[peptide] = pd.NA
 
-    # # Add dashes to the end of sequences that are less than 8 aa long for N-terminal cleavages
+    # Add dashes to the end of sequences that are less than 8 aa long for N-terminal cleavages
     for peptide in n_terminal_dict:
         string = n_terminal_dict[peptide]
         if pd.isna(string):
@@ -225,7 +222,8 @@ def peptide_seq_match(df:pd.DataFrame, name, output_directory):
             else:
                 string = "-" + string
         n_terminal_dict[peptide] = string
-    # # Add dashes to beginning of sequences that are less than 8 aa long for C-terminal cleavages
+
+    # Add dashes to beginning of sequences that are less than 8 aa long for C-terminal cleavages
     for peptide in c_terminal_dict:
         string = c_terminal_dict[peptide]
         if pd.isna(string):
@@ -257,13 +255,15 @@ def create_termini_list(df:pd.DataFrame, name, output_directory):
     df_N = df[['N-terminal', 'Protein', 'Protein ID', 'Tryptic State'] + presence_cols].rename(columns={'N-terminal': 'Non-Tryptic Termini'})
     df_C = df[['C-terminal', 'Protein', 'Protein ID', 'Tryptic State'] + presence_cols].rename(columns={'C-terminal': 'Non-Tryptic Termini'})
 
-# Concatenate these two dataframes
+    # Concatenate these two dataframes
     nontryp_termini = pd.concat([df_N, df_C])
     nontryp_termini = nontryp_termini.dropna()
     nontryp_termini.to_csv(f'{output_directory}/{name}.csv', index=False)
     return nontryp_termini
 
+
 ### Substrate table processing to clean substrate_search table from MEROPS and also get a list of organisms to be used in GUI
+# This function is not used in the GUI, it is simply for processing/cleaning the MEROPS table 
 def substrate_processing(path):
     amino_acid_dict = {
         'Ala': 'A',
