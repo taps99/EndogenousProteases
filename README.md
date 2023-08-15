@@ -4,10 +4,14 @@ GUI developed using Tkinter framework in Python to extract missed cleavage data 
 
 
 ## Instructions
+
+### Non-tryptic peptide extraction
 Peptide-Spectrum Match (PSM) TSV files resulting from processing by the Fragpipe software are used as the input for the extraction of missed cleavage data. 
 
 Input files may be grouped based on experiment/treatment by selecting a subset of input files in the listbox and then clicking the 'Group Files' button. Binary presence/absence (P/A) data will be generated based on the grouping of files.
 
+### Matching termini to cleavage sites in MEROPS
+Use the list of unique non-tryptic termini output from the extraction of non-tryptic peptides in first tab to match to cleavage sites in MEROPS. Select the appropriate species, preferred matching method, and output directory. Termini may also be filtered based on P/A data for specified groups.
 
 ### Output files from non-tryptic peptide extraction
 Row counts are based on the validation data set used for the development of this project (*Klebsiella pneumoniae* wild-type vs Lon mutant data from Muselius, B., Sukumaran, A., Yeung, J., & Geddes-McAlister, J. (2020). Iron Limitation in Klebsiella pneumoniae Defines New Roles for Lon Protease in Homeostasis and Degradation by Quantitative Proteomics. Frontiers in Microbiology, 11. https://www.frontiersin.org/articles/10.3389/fmicb.2020.00546)
